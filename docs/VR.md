@@ -68,9 +68,9 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Block | Hold the shield where the attack is coming from |
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. The first ring's groups: Ranged & Tools, Explosives & Heavy, Magic & Spells (with the magic arrows), Bottles & Consumables, Quest & Lore, Equipment & Gear, and System (the ship). |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
-| Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
+| Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both; let go with one and the other keeps it. |
 | Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips; Link takes hold once he's up against it, so you can squeeze first and walk in. Then push the stick forward while looking at it to push it, or while looking away from it to pull it. Let go to let go of it. A works too. |
-| Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
+| Throw | Swing the hand holding it and let go of the grip; a slow release sets it down. Carried in both hands, swing both and let go of both together to throw it with both. |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
 | Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go. The shot flies from your drawing hand through the bow or the slingshot's arms, so pull lower to aim higher. |
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire |

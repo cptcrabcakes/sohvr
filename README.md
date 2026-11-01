@@ -1,4 +1,71 @@
-> **This is an unofficial VR fork of Ship of Harkinian.** It adds an experimental six-degrees-of-freedom VR mode for PC headsets. See **[docs/VR.md](docs/VR.md)** for how to build it, turn VR on and play. It isn't made or supported by HarbourMasters. Like Ship of Harkinian, it contains no game assets, so you need your own copy of the game. The rest of this README is Ship of Harkinian's own.
+> **This is an unofficial VR fork of Ship of Harkinian.** It adds an experimental six-degrees-of-freedom VR mode for PC headsets. See **[docs/VR.md](docs/VR.md)** for how to build it, turn VR on and play. It isn't made or supported by HarbourMasters. Like Ship of Harkinian, it contains no game assets, so you need your own copy of the game. Everything from the **Ship of Harkinian** heading down is that project's own README.
+>
+> **The aim:** to make every item and action feel like it belongs in a game made for VR, not to lay a VR view over the original controls. You draw the sword from over your shoulder and swing it, block with the shield where you hold it, pull back the bowstring and aim down the arrow, tip a bottle to your mouth to drink, hold a mask to your face to put it on, and pick up pots, bombs and rocks to throw them. Buttons are kept only where your hands have nothing better to do.
+
+# Playing in VR
+
+HAS ONLY BEEN TESTED WITH A QUEST 3 ON STEAM AIR LINK
+
+How to build it, turn VR on and change its settings is in **[docs/VR.md](docs/VR.md)**.
+
+## The item wheel: press Y
+
+Your items, gear, the pause menu and the VR settings are all on the item wheel. There are no item buttons.
+
+1. **Press Y.** A ring of items opens in front of you.
+2. **Reach out and touch one, or point at it, then squeeze the grip or pull the trigger.** It goes into the hand that took it.
+3. **Groups open their own ring.** Take one the same way. The middle of a ring goes back.
+4. **Press Y again** to close the wheel.
+
+The first ring's groups, clockwise from the top. Each shows the first thing in it, and only what you've found is there.
+
+| Group | What's in it |
+| - | - |
+| Ranged | Slingshot, bow, boomerang, hookshot or longshot |
+| Explosives | Bombs, bombchus, Megaton Hammer, Deku sticks, magic beans |
+| Magic | Lens of Truth, fire, ice and light arrows, Nayru's Love, Farore's Wind, Din's Fire |
+| Consumables | Deku nuts and bottles |
+| Quest | Ocarina, and the child and adult trade items |
+| Gear | Shields, swords, boots and tunics, each in its own ring |
+| System (the ship) | The pause menu (the map) and the VR settings (the compass) |
+
+## With your hands
+
+| To | Do this |
+| - | - |
+| Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
+| Attack | Swing the sword |
+| Block | Hold the shield where the attack is coming from |
+| Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
+| Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both. |
+| Throw | Swing and let go of the grip; a slow release sets it down. Carried in both hands, let go of both together to throw with both. |
+| Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips, then push the stick forward while looking at it to push, or while looking away to pull |
+| Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift |
+| Fire the bow or slingshot | With your other hand at the bow, pull its trigger, draw back and let go. Pull lower to aim higher. |
+| Fire the hookshot | Point, pull the trigger to aim, let go to fire |
+| Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
+| Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
+| Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
+| Play the ocarina | A and the right stick are its notes; X and Y play C-left and C-right |
+
+## Buttons
+
+| Control | What it does |
+| - | - |
+| Y | Open or close the item wheel |
+| Left stick | Walk, toward where you're looking (or where your left hand points; see Movement Direction) |
+| Walk around your room | Link walks too; walls stop you |
+| Right stick left/right | Turn |
+| Right stick down | L; talks to Navi when she has something to say |
+| Right stick click | Recenter the view, or bring the floating screen back |
+| Left stick click or Menu button | Pause |
+| A | Talk, open, climb, roll; while carrying something, put it down or throw it |
+| B | Advance text, and put the ocarina away |
+| Left trigger | Z-target |
+
+The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. While the bow or slingshot is out, the arrows or seeds left show on the back of the hand holding it. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
+
+# Ship of Harkinian
 
 * [Website](https://www.shipofharkinian.com)
 * [Discord](https://discord.com/invite/harbourmasters)
@@ -31,43 +98,6 @@ You can verify you have dumped a supported copy of the game by using the compati
 Congratulations, you are now sailing with the Ship of Harkinian! Have fun!
 
 # Configuration
-
-### VR 
-
-HAS ONLY BEEN TESTED WITH A QUEST 3 ON STEAM AIR LINK
-
-| Control | What it does |
-| - | - |
-| Left stick | Walk, relative to where you're looking |
-| Walk around your room | Link walks too; walls stop you |
-| Right stick left/right | Turn |
-| Right stick down | L |
-| Right stick click | Recenter the view, or bring the floating screen back |
-| Left stick click or Menu button | Pause |
-| A | Talk, open, climb, roll; while carrying something, put it down or throw it |
-| B | Advance text, and put the ocarina away |
-| Y | Open or close the item menu |
-| Left trigger | Z-target |
-
-| To | Do this |
-| - | - |
-| Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
-| Attack | Swing the sword |
-| Block | Hold the shield where the attack is coming from |
-| Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. |
-| Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
-| Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
-| Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
-| Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
-| Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go |
-| Fire the hookshot | Point, pull the trigger to aim, let go to fire |
-| Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
-| Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
-| Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
-| Play the ocarina | A, X, Y and the right stick up and down are its notes |
-
-The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
-
 
 ### Default keyboard configuration
 | N64 | A | B | Z | Start | Analog stick | C buttons | D-Pad |

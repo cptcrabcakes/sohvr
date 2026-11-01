@@ -126,6 +126,11 @@ constexpr float kHeadFollowEase = 0.5f;
 // Thrown things leave the hand a little faster than it moved, so throws don't feel weak.
 constexpr float kThrowBoost = 1.5f;
 constexpr float kMinThrowSpeed = 1.5f; // meters per second; slower releases just drop
+// The other hand takes hold of something carried too when it closes this close to the carrying hand (meters). Let go
+// of a two-handed hold within the window (seconds) of each other, the hands throw it together; one let go alone,
+// the other keeps carrying it.
+constexpr float kTwoHandCarryReach = 0.5f;
+constexpr float kTwoHandThrowWindow = 0.15f;
 // The game's own throw of whatever Link carries (func_8084409C from the A button), the limit for a pitched one.
 constexpr float kBombMaxForward = 8.0f;
 constexpr float kBombMaxUp = 12.0f;
@@ -899,6 +904,11 @@ float HandSpeed(Hand hand) {
     return sqrtf(Dot(moved, moved)) * refresh / static_cast<float>(count - 1);
 }
 
+// What can be lifted by hand (see UpdateLiftGrab) is within this reach (game units) of a point this far above its
+// origin.
+constexpr float kLiftReach = 22.0f;
+constexpr float kLiftCenterHeight = 12.0f;
+
 // A throw the grip let go of, waiting for the game to release the carried actor.
 bool sThrowPending = false;
 bool sThrowRequested = false;
@@ -958,17 +968,107 @@ void HoldNut() {
 // carries, and letting go throws it.
 bool sCarryArmed = false;
 
+// Carried things (not nuts) can be held in both hands: the other hand closes on it, or was already closed on it
+// when it was lifted. In both, it sits between the hands. When one lets go, the release waits out the throw window
+// with that hand's velocity, for the other to let go too.
+bool sCarryTwoHanded = false;
+bool sWasCarrying = false;
+bool sSupportGripLatched = false;
+float sReleaseWait = -1.0f; // seconds since one hand let go of a two-handed hold, or below 0
+Hand sReleasedHand = HAND_LEFT;
+Vec3 sReleasedVelocity = {};
+
+Hand OtherHand(Hand hand) {
+    return hand == HAND_LEFT ? HAND_RIGHT : HAND_LEFT;
+}
+
+bool HandsTogether() {
+    const Runtime& runtime = Runtime::Get();
+    const Pose& a = runtime.GetController(HAND_LEFT).gripPose;
+    const Pose& b = runtime.GetController(HAND_RIGHT).gripPose;
+    if (!a.valid || !b.valid) {
+        return false;
+    }
+    Vec3 apart = { a.position[0] - b.position[0], a.position[1] - b.position[1], a.position[2] - b.position[2] };
+    return Dot(apart, apart) < kTwoHandCarryReach * kTwoHandCarryReach;
+}
+
+void ThrowCarried(Player* player, Vec3 velocity, bool bothHands) {
+    if (MetersPerSecond(velocity) < kMinThrowSpeed) {
+        // A slow release sets it down where the hand is.
+        velocity = { 0.0f, 0.0f, 0.0f };
+    }
+    // Bombs, bombchus, pots, rocks and the like leave the hand the way it was moving.
+    sThrowPending = true;
+    sThrowRequested = true;
+    sThrowVelocity = velocity;
+    SPDLOG_INFO("[VR] Threw a carried actor {}{} at {:.1f} m/s", player->heldActor->id,
+                bothHands ? " with both hands" : "", MetersPerSecond(velocity));
+}
+
 void UpdateCarry() {
+    Runtime& runtime = Runtime::Get();
     Player* player = Vr_IsWorldStereo() ? GET_PLAYER(gPlayState) : nullptr;
     bool carrying = player != nullptr && (player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) &&
                     player->heldActor != nullptr;
     bool holdingNut = sHeldNut != nullptr;
     Hand hand = ControllerFor(LINK_RIGHT);
-    bool gripHeld = Runtime::Get().GetController(hand).gripHeld;
+    Hand other = OtherHand(hand);
+    bool gripHeld = runtime.GetController(hand).gripHeld;
+    bool otherHeld = runtime.GetController(other).gripHeld;
+    bool otherPressed = otherHeld && !sSupportGripLatched;
+    sSupportGripLatched = otherHeld;
+    bool liftedNow = carrying && !sWasCarrying;
+    sWasCarrying = carrying;
     if (!carrying && !holdingNut) {
         sCarryArmed = false;
+        sCarryTwoHanded = false;
+        sReleaseWait = -1.0f;
         return;
     }
+
+    if (carrying && sCarryTwoHanded) {
+        if (sReleaseWait >= 0.0f) {
+            Hand stillHolding = OtherHand(sReleasedHand);
+            if (!runtime.GetController(stillHolding).gripHeld) {
+                // Both let go together: thrown with both hands' swing.
+                Vec3 a = sReleasedVelocity;
+                Vec3 b = ThrowVelocity(stillHolding);
+                sCarryTwoHanded = false;
+                sReleaseWait = -1.0f;
+                sCarryArmed = false;
+                ThrowCarried(player, { (a.x + b.x) * 0.5f, (a.y + b.y) * 0.5f, (a.z + b.z) * 0.5f }, true);
+                return;
+            }
+            uint32_t refresh = runtime.GetRefreshRate();
+            sReleaseWait += refresh > 0 ? 1.0f / refresh : kTwoHandThrowWindow;
+            if (sReleaseWait > kTwoHandThrowWindow) {
+                // Only one let go: the other carries it on its own, and throws it when it lets go.
+                PutLinkHandOn(LINK_RIGHT, stillHolding);
+                sCarryTwoHanded = false;
+                sReleaseWait = -1.0f;
+                sCarryArmed = true;
+                SPDLOG_INFO("[VR] Carrying actor {} in one hand again", player->heldActor->id);
+            }
+            return;
+        }
+        if (!gripHeld || !otherHeld) {
+            sReleasedHand = gripHeld ? other : hand;
+            sReleasedVelocity = ThrowVelocity(sReleasedHand);
+            sReleaseWait = 0.0f;
+        }
+        return;
+    }
+
+    // The other hand takes hold too.
+    if (carrying && gripHeld && (otherPressed || (liftedNow && otherHeld)) && HandsTogether()) {
+        sCarryTwoHanded = true;
+        sCarryArmed = true;
+        runtime.Vibrate(other, 0.4f, 0.05f);
+        SPDLOG_INFO("[VR] Holding actor {} in both hands", player->heldActor->id);
+        return;
+    }
+
     if (gripHeld) {
         sCarryArmed = true;
         return;
@@ -979,19 +1079,14 @@ void UpdateCarry() {
     sCarryArmed = false;
 
     Vec3 velocity = ThrowVelocity(hand);
-    if (MetersPerSecond(velocity) < kMinThrowSpeed) {
-        // A slow release sets it down where the hand is.
-        velocity = { 0.0f, 0.0f, 0.0f };
-    }
     if (holdingNut) {
+        if (MetersPerSecond(velocity) < kMinThrowSpeed) {
+            velocity = { 0.0f, 0.0f, 0.0f };
+        }
         // Nuts are light, so they leave the hand a little faster than it moved.
         ReleaseNut({ velocity.x * kThrowBoost, velocity.y * kThrowBoost, velocity.z * kThrowBoost });
     } else {
-        // Bombs, bombchus, pots, rocks and the like leave the hand the way it was moving.
-        sThrowPending = true;
-        sThrowRequested = true;
-        sThrowVelocity = velocity;
-        SPDLOG_INFO("[VR] Threw a carried actor {} at {:.1f} m/s", player->heldActor->id, MetersPerSecond(velocity));
+        ThrowCarried(player, velocity, false);
     }
 }
 
@@ -1075,8 +1170,6 @@ void UpdateWorldGrabs() {
 // chests and catchable creatures), are lifted by closing a hand on them, within the lift reach (game units) of
 // a point a little above their origin. The grabbing hand becomes the throwing hand, and the grip still held carries
 // it until it's let go (see UpdateCarry). A while carrying still puts it down or throws it as the game does.
-constexpr float kLiftReach = 22.0f;
-constexpr float kLiftCenterHeight = 12.0f;
 bool sLiftGripLatched[HAND_COUNT] = {};
 
 void UpdateLiftGrab() {
@@ -2922,7 +3015,28 @@ extern "C" void Vr_PlaceHeldActor(Player* player, Actor* held) {
         !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
         return;
     }
-    const SohVr::Pose& grip = SohVr::Runtime::Get().GetController(SohVr::ControllerFor(SohVr::LINK_RIGHT)).gripPose;
+    const SohVr::Runtime& runtime = SohVr::Runtime::Get();
+    const SohVr::Pose& grip = runtime.GetController(SohVr::ControllerFor(SohVr::LINK_RIGHT)).gripPose;
+    if (SohVr::sCarryTwoHanded) {
+        // Between both hands, its middle (a little above its origin, as when it was lifted) halfway between them,
+        // upright and facing the way the player looks.
+        const SohVr::Pose& left = runtime.GetController(SohVr::HAND_LEFT).gripPose;
+        const SohVr::Pose& right = runtime.GetController(SohVr::HAND_RIGHT).gripPose;
+        if (left.valid && right.valid) {
+            float middle[3];
+            for (int i = 0; i < 3; i++) {
+                middle[i] = (left.position[i] + right.position[i]) * 0.5f;
+            }
+            SohVr::Vec3 between = SohVr::ToWorld(middle, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
+            held->world.pos = { between.x, between.y - SohVr::kLiftCenterHeight, between.z };
+        }
+        SohVr::Vec3 look = SohVr::RotateYaw(SohVr::sYaw, SohVr::HeadForward());
+        s16 yaw = RADF_TO_BINANG(atan2f(look.x, look.z));
+        held->shape.rot = { 0, yaw, 0 };
+        held->world.rot.y = yaw;
+        held->world.rot.x = 0;
+        return;
+    }
     if (grip.valid) {
         SohVr::Vec3 hand = SohVr::ToWorld(grip.position, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
         held->world.pos = { hand.x, hand.y, hand.z };
