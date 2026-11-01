@@ -24,7 +24,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Group | What's in it |
 | - | - |
 | Ranged | Slingshot, bow, boomerang, hookshot or longshot |
-| Explosives | Bombs, bombchus, Megaton Hammer, Deku sticks, magic beans |
+| Explosives/Power Weapons | Bombs, bombchus, Megaton Hammer, Deku sticks, magic beans |
 | Magic | Lens of Truth, fire, ice and light arrows, Nayru's Love, Farore's Wind, Din's Fire |
 | Consumables | Deku nuts and bottles |
 | Quest | Ocarina, and the child and adult trade items |
