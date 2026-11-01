@@ -72,23 +72,22 @@ struct Entry {
     int action = ACTION_NONE;
 };
 
-// The rings, as a tree with a handful of choices on each: Gear (swords, shields, tunics, boots), Weapons (bow and
-// arrows, slingshot, boomerang, hookshot, hammer), Explosives (bombs, bombchus, nuts, sticks), Magic (spells, lens),
-// Items (ocarina, bottles, trade items) and System (the pause menu and the VR settings).
+// The rings, as a tree. The first ring's sections: Ranged & Tools (slingshot, bow, boomerang, hookshot), Explosives &
+// Heavy (bombs, bombchus, hammer, Deku sticks, beans), Magic & Spells (the lens, the magic arrows, the spells), Bottles
+// & Consumables (Deku nuts and the bottles), Quest & Lore (the ocarina and the trade items), Equipment & Gear (a ring of
+// rings: shields, swords, boots, tunics) and System (the pause menu and the VR settings).
 enum MenuCategory {
     CAT_ROOT,
+    CAT_RANGED,
+    CAT_EXPLOSIVES,
+    CAT_MAGIC,
+    CAT_CONSUMABLES,
+    CAT_QUEST,
     CAT_GEAR,
     CAT_SWORDS,
     CAT_SHIELDS,
     CAT_TUNICS,
     CAT_BOOTS,
-    CAT_WEAPONS,
-    CAT_BOWS,
-    CAT_EXPLOSIVES,
-    CAT_MAGIC,
-    CAT_ITEMS,
-    CAT_BOTTLES,
-    CAT_TRADE,
     CAT_SYSTEM,
 };
 
@@ -234,12 +233,60 @@ std::vector<Entry> CategoryEntries(int category) {
     std::vector<Entry> out;
     switch (category) {
         case CAT_ROOT:
-            for (int child : { CAT_GEAR, CAT_WEAPONS, CAT_EXPLOSIVES, CAT_MAGIC, CAT_ITEMS, CAT_SYSTEM }) {
+            for (int child : { CAT_RANGED, CAT_EXPLOSIVES, CAT_MAGIC, CAT_CONSUMABLES, CAT_QUEST, CAT_GEAR, CAT_SYSTEM }) {
                 AddCategory(out, child);
             }
             break;
+        case CAT_RANGED:
+            // The slingshot beside the bow, and the boomerang beside the hookshot (or longshot).
+            AddOwnedItem(out, ITEM_SLINGSHOT);
+            AddOwnedItem(out, ITEM_BOW);
+            AddOwnedItem(out, ITEM_BOOMERANG);
+            AddItem(out, INV_CONTENT(ITEM_HOOKSHOT));
+            break;
+        case CAT_EXPLOSIVES:
+            AddAmmoItem(out, ITEM_BOMB);
+            AddAmmoItem(out, ITEM_BOMBCHU);
+            AddOwnedItem(out, ITEM_HAMMER);
+            AddAmmoItem(out, ITEM_STICK);
+            AddAmmoItem(out, ITEM_BEAN);
+            break;
+        case CAT_MAGIC:
+            // The lens at the top, the magic arrows down the right and the spells up the left.
+            AddOwnedItem(out, ITEM_LENS);
+            if (INV_CONTENT(ITEM_BOW) == ITEM_BOW) {
+                if (INV_CONTENT(ITEM_ARROW_FIRE) == ITEM_ARROW_FIRE) {
+                    AddItem(out, ITEM_BOW_ARROW_FIRE);
+                }
+                if (INV_CONTENT(ITEM_ARROW_ICE) == ITEM_ARROW_ICE) {
+                    AddItem(out, ITEM_BOW_ARROW_ICE);
+                }
+                if (INV_CONTENT(ITEM_ARROW_LIGHT) == ITEM_ARROW_LIGHT) {
+                    AddItem(out, ITEM_BOW_ARROW_LIGHT);
+                }
+            }
+            AddOwnedItem(out, ITEM_NAYRUS_LOVE);
+            AddOwnedItem(out, ITEM_FARORES_WIND);
+            AddOwnedItem(out, ITEM_DINS_FIRE);
+            break;
+        case CAT_CONSUMABLES:
+            AddAmmoItem(out, ITEM_NUT);
+            for (int slot = SLOT_BOTTLE_1; slot <= SLOT_BOTTLE_4; slot++) {
+                size_t before = out.size();
+                AddItem(out, gSaveContext.inventory.items[slot]);
+                if (out.size() > before) {
+                    out.back().slot = static_cast<s8>(slot);
+                }
+            }
+            break;
+        case CAT_QUEST:
+            AddItem(out, INV_CONTENT(ITEM_OCARINA_FAIRY));
+            AddItem(out, gSaveContext.inventory.items[SLOT_TRADE_CHILD]);
+            AddItem(out, gSaveContext.inventory.items[SLOT_TRADE_ADULT]);
+            break;
         case CAT_GEAR:
-            for (int child : { CAT_SWORDS, CAT_SHIELDS, CAT_TUNICS, CAT_BOOTS }) {
+            // Clockwise from the top: shields, swords, boots, tunics.
+            for (int child : { CAT_SHIELDS, CAT_SWORDS, CAT_BOOTS, CAT_TUNICS }) {
                 AddCategory(out, child);
             }
             break;
@@ -254,57 +301,6 @@ std::vector<Entry> CategoryEntries(int category) {
             break;
         case CAT_BOOTS:
             AddEquipType(out, EQUIP_TYPE_BOOTS);
-            break;
-        case CAT_WEAPONS:
-            AddCategory(out, CAT_BOWS);
-            AddOwnedItem(out, ITEM_SLINGSHOT);
-            AddOwnedItem(out, ITEM_BOOMERANG);
-            AddItem(out, INV_CONTENT(ITEM_HOOKSHOT));
-            AddOwnedItem(out, ITEM_HAMMER);
-            break;
-        case CAT_BOWS:
-            if (INV_CONTENT(ITEM_BOW) == ITEM_BOW) {
-                AddItem(out, ITEM_BOW);
-                if (INV_CONTENT(ITEM_ARROW_FIRE) == ITEM_ARROW_FIRE) {
-                    AddItem(out, ITEM_BOW_ARROW_FIRE);
-                }
-                if (INV_CONTENT(ITEM_ARROW_ICE) == ITEM_ARROW_ICE) {
-                    AddItem(out, ITEM_BOW_ARROW_ICE);
-                }
-                if (INV_CONTENT(ITEM_ARROW_LIGHT) == ITEM_ARROW_LIGHT) {
-                    AddItem(out, ITEM_BOW_ARROW_LIGHT);
-                }
-            }
-            break;
-        case CAT_EXPLOSIVES:
-            AddAmmoItem(out, ITEM_BOMB);
-            AddAmmoItem(out, ITEM_BOMBCHU);
-            AddAmmoItem(out, ITEM_NUT);
-            AddAmmoItem(out, ITEM_STICK);
-            break;
-        case CAT_MAGIC:
-            for (u8 item : { ITEM_DINS_FIRE, ITEM_FARORES_WIND, ITEM_NAYRUS_LOVE, ITEM_LENS }) {
-                AddOwnedItem(out, item);
-            }
-            break;
-        case CAT_ITEMS:
-            AddItem(out, INV_CONTENT(ITEM_OCARINA_FAIRY));
-            AddCategory(out, CAT_BOTTLES);
-            AddCategory(out, CAT_TRADE);
-            break;
-        case CAT_BOTTLES:
-            for (int slot = SLOT_BOTTLE_1; slot <= SLOT_BOTTLE_4; slot++) {
-                size_t before = out.size();
-                AddItem(out, gSaveContext.inventory.items[slot]);
-                if (out.size() > before) {
-                    out.back().slot = static_cast<s8>(slot);
-                }
-            }
-            break;
-        case CAT_TRADE:
-            AddItem(out, gSaveContext.inventory.items[SLOT_TRADE_CHILD]);
-            AddItem(out, gSaveContext.inventory.items[SLOT_TRADE_ADULT]);
-            AddAmmoItem(out, ITEM_BEAN);
             break;
         case CAT_SYSTEM: {
             // The pause menu (its map and quest pages), shown by a map, and the VR settings, by a compass.

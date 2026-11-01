@@ -141,6 +141,8 @@ constexpr ScreenRect kRupeesRect = { 16, 176, 74, 52 };  // rupees and small key
 // The A button, whose label says what A does right now, and the B button beside it (its 32-pixel icons start at
 // x 186 and 160). The C buttons have no use in VR.
 constexpr ScreenRect kActionRect = { 156, 2, 66, 50 };
+// The bow's or slingshot's ammo left, in the bottom middle, which the HUD itself leaves empty (see DrawAmmoCounter).
+constexpr ScreenRect kAmmoRect = { 116, 208, 88, 16 };
 constexpr int kTextboxHeight = 78;
 // How far below eye level text panels appear, a meter ahead (meters). At 0.25 they covered the speaker's face.
 constexpr float kMessageDrop = 0.4f;
@@ -1932,6 +1934,10 @@ void UpdateSeating(bool recenter) {
     SPDLOG_INFO("[VR] Seated: the view is lifted {:.2f} m", sSeatedLift);
 }
 
+int Game_SceneNumber() {
+    return gPlayState != nullptr ? gPlayState->sceneNum : -1;
+}
+
 void Game_Recenter() {
     sNeedsRecenter = true;
     sSeatMeasured = false;
@@ -2213,6 +2219,18 @@ void Game_GetHudQuads(std::vector<HudQuad>& out) {
         out.push_back(MakeQuad(Attach(rightGrip, kRightWatchOffset, kRightWatchRotation),
                                0.05f * kActionRect.w / 46.0f, kActionRect));
     }
+    // The ammo left (see DrawAmmoCounter) on the back of the hand holding the bow or slingshot, past that wrist's
+    // own panel toward the knuckles.
+    if (CurrentTool() == HeldTool::Bow) {
+        Hand bowHand = ControllerFor(LINK_RIGHT);
+        const Pose& grip = runtime.GetController(bowHand).gripPose;
+        if (grip.valid) {
+            Pose watch = (bowHand == HAND_RIGHT) ? Attach(GripFrame(grip), kRightWatchOffset, kRightWatchRotation)
+                                                 : Attach(GripFrame(grip), kLeftWatchOffset, kLeftWatchRotation);
+            float along = (bowHand == HAND_RIGHT) ? 0.045f : 0.075f;
+            out.push_back(MakeQuad(Attach(watch, { 0.0f, along, 0.0f }, kNoRotation), 0.06f, kAmmoRect));
+        }
+    }
     if (sRender.message && sMessagePose.valid) {
         int y = std::clamp(static_cast<int>(sRender.textboxY) - 6, 0, SCREEN_HEIGHT - kTextboxHeight);
         out.push_back(MakeQuad(sMessagePose, 0.9f, { 0, y, SCREEN_WIDTH, kTextboxHeight }));
@@ -2342,6 +2360,45 @@ extern "C" void Vr_PlaceBombModel(Actor* actor, f32 scale, Vec3f* origin, Vec3f*
     fuseTip->z = origin->z + axis.z * kBombFuseTip * scale;
 }
 
+// While the bow or slingshot is out, the arrows or seeds left are shown on the back of the hand holding it: drawn into
+// the HUD's ammo rect, and shown there by a panel on that hand (see Game_GetHudQuads). The count is the one the game
+// shoots from: the horseback archery's or the shooting gallery's while one is on, otherwise the player's own.
+static void DrawAmmoCounter(PlayState* play) {
+    const SohVr::ScreenRect& kAmmoRect = SohVr::kAmmoRect;
+    Player* player = GET_PLAYER(play);
+    if (SohVr::CurrentTool() != SohVr::HeldTool::Bow) {
+        return;
+    }
+    bool slingshot = Player_HoldsSlingshot(player);
+    s32 ammo;
+    if (gSaveContext.minigameState == 1) {
+        ammo = play->interfaceCtx.hbaAmmo;
+    } else if (play->shootingGalleryStatus != 0) {
+        ammo = play->shootingGalleryStatus;
+    } else {
+        ammo = AMMO(slingshot ? ITEM_SLINGSHOT : ITEM_BOW);
+    }
+    Gfx*& overlay = play->state.gfxCtx->overlay.p;
+    gDPPipeSync(overlay++);
+    gDPSetCycleType(overlay++, G_CYC_1CYCLE);
+    gDPSetRenderMode(overlay++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(overlay++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPSetPrimColor(overlay++, 0, 0, 10, 15, 30, 200);
+    gDPFillRectangle(overlay++, kAmmoRect.x, kAmmoRect.y, kAmmoRect.x + kAmmoRect.w, kAmmoRect.y + kAmmoRect.h);
+
+    char text[16];
+    snprintf(text, sizeof(text), "%s %d", slingshot ? "SEEDS" : "ARROWS", static_cast<int>(std::max(ammo, 0)));
+    GfxPrint printer;
+    GfxPrint_Init(&printer);
+    GfxPrint_Open(&printer, overlay);
+    GfxPrint_SetColor(&printer, 255, ammo > 0 ? 255 : 90, ammo > 0 ? 255 : 90, 255);
+    GfxPrint_SetPosPx(&printer, kAmmoRect.x + (kAmmoRect.w - 8 * static_cast<int>(strlen(text))) / 2,
+                      kAmmoRect.y + (kAmmoRect.h - 8) / 2);
+    GfxPrint_Printf(&printer, "%s", text);
+    overlay = GfxPrint_Close(&printer);
+    GfxPrint_Destroy(&printer);
+}
+
 extern "C" bool Vr_ViewFromCamera(void) {
     return Vr_IsWorldStereo() && SohVr::sBuild.fromCamera;
 }
@@ -2361,6 +2418,7 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
         SohVr::DrawHandItem(play, player, SohVr::LINK_LEFT);
         SohVr::DrawHandItem(play, player, SohVr::LINK_RIGHT);
         SohVr::DrawHeldMask(play);
+        DrawAmmoCounter(play);
     }
     SohVr::Items_Draw(play);
 }

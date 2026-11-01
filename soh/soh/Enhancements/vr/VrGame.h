@@ -46,6 +46,8 @@ void Game_RequestItem(int request);
 // item belongs in his other one. slot is a bottle's inventory slot, or -1. A mask goes into the hand, to be put on
 // by bringing it to the face.
 void Game_TakeItem(uint8_t item, Hand hand, int8_t slot);
+// The scene being played, or -1 outside of one.
+int Game_SceneNumber();
 // Recenters the view on the next frame, measuring the seated height again in seated mode.
 void Game_Recenter();
 // Presses Start for the game's next update, opening the pause menu.
