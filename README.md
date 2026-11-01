@@ -39,6 +39,8 @@ Congratulations, you are now sailing with the Ship of Harkinian! Have fun!
 
 ### VR 
 
+HAS ONLY BEEN TESTED WITH A QUEST 3 ON STEAM AIR LINK
+
 | Control | What it does |
 | - | - |
 | Left stick | Walk, relative to where you're looking |
