@@ -2,6 +2,7 @@
 #include "vt.h"
 #include "../ovl_En_Diving_Game/z_en_diving_game.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -387,7 +388,7 @@ void EnExRuppy_Draw(Actor* thisx, PlayState* play) {
     if (!this->invisible) {
         OPEN_DISPS(play->state.gfxCtx);
 
-        if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+        if (Vr_UseNewDrops()) {
             func_8002EBCC(&this->actor, play, 0);
             func_8002ED80(&this->actor, play, 0);
 

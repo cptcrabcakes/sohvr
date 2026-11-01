@@ -21,6 +21,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/gameplaystats.h"
 #include "soh/ObjectExtension/ActorMaximumHealth.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
 
 #include "message_data_static.h"
@@ -3343,6 +3344,10 @@ void Interface_UpdateMagicBar(PlayState* play) {
                         hasLens = true;
                         break;
                     }
+                }
+                // In VR the lens comes from the item menu, not a C button, so owning it is enough.
+                if (Vr_ItemsFromMenu() && (INV_CONTENT(ITEM_LENS) == ITEM_LENS)) {
+                    hasLens = true;
                 }
                 if ((gSaveContext.magic == 0) ||
                     ((Player_GetEnvironmentalHazard(play) >= 2) && (Player_GetEnvironmentalHazard(play) < 5)) ||

@@ -13,6 +13,7 @@ s32 Player_GetMovementSpeedAndYaw(Player* player, f32* outSpeedTarget, s16* outY
 
 #define CVAR_MOVE_IN_FIRST_PERSON_NAME CVAR_SETTING("MoveInFirstPerson")
 #define CVAR_RIGHT_STICK_AIM_NAME CVAR_SETTING("Controls.RightStickAim")
+#define CVAR_VR_ENABLED_NAME CVAR_SETTING("VR.Enabled")
 
 // from z_player.c
 #define SPEED_MODE_CURVED 0.018f
@@ -48,8 +49,10 @@ static void MoveInFirstPerson(Player* player) {
 }
 
 static void RegisterFirstPerson() {
+    // VR aims with the hands, so the stick always moves while aiming there.
     bool moveInFirstPerson =
-        CVarGetInteger(CVAR_MOVE_IN_FIRST_PERSON_NAME, 0) && CVarGetInteger(CVAR_RIGHT_STICK_AIM_NAME, 0);
+        (CVarGetInteger(CVAR_MOVE_IN_FIRST_PERSON_NAME, 0) && CVarGetInteger(CVAR_RIGHT_STICK_AIM_NAME, 0)) ||
+        CVarGetInteger(CVAR_VR_ENABLED_NAME, 0);
 
     // Left stick moves instead of aiming; right stick aims
     COND_VB_SHOULD(VB_PLAYER_AIM_WITH_LEFT_STICK, moveInFirstPerson, { *should = false; });
@@ -70,4 +73,4 @@ static void RegisterFirstPerson() {
 }
 
 static RegisterShipInitFunc initFunc(RegisterFirstPerson,
-                                     { CVAR_MOVE_IN_FIRST_PERSON_NAME, CVAR_RIGHT_STICK_AIM_NAME });
+                                     { CVAR_MOVE_IN_FIRST_PERSON_NAME, CVAR_RIGHT_STICK_AIM_NAME, CVAR_VR_ENABLED_NAME });

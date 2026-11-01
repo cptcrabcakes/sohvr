@@ -15,6 +15,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/frame_interpolation.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -483,7 +484,7 @@ void EnGSwitch_DrawRupee(Actor* thisx, PlayState* play) {
     if (!this->broken) {
         OPEN_DISPS(play->state.gfxCtx);
 
-        if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+        if (Vr_UseNewDrops()) {
             func_8002EBCC(&this->actor, play, 0);
             func_8002ED80(&this->actor, play, 0);
 

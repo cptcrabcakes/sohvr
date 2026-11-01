@@ -12,6 +12,7 @@
 #include "objects/object_shopnuts/object_shopnuts.h"
 #include "objects/object_dns/object_dns.h"
 #include "objects/object_dnk/object_dnk.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -179,7 +180,7 @@ void EnNutsball_Draw(Actor* thisx, PlayState* play) {
 
     OPEN_DISPS(play->state.gfxCtx);
 
-    if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0) != 0) {
+    if (Vr_UseNewDrops() != 0) {
         Gfx_SetupDL_25Opa(play->state.gfxCtx);
         gSPSegment(POLY_OPA_DISP++, 0x08,
                    Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 1 * (play->state.frames * 6), 1 * (play->state.frames * 6),

@@ -41,6 +41,7 @@
 #include "soh/Enhancements/savestates.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
 #include "frame_interpolation.h"
+#include "Enhancements/vr/VrRender.h"
 #include "SohGui/SohMenu.h"
 #include "SohGui/SohGui.hpp"
 #include "variables.h"
@@ -1049,6 +1050,10 @@ bool OTRGlobals::HasOriginal() {
 }
 
 uint32_t OTRGlobals::GetInterpolationFPS() {
+    // In VR every headset refresh gets an interpolated frame, whatever the frame rate setting says.
+    if (uint32_t vrFps = SohVr::GetRefreshRate()) {
+        return vrFps;
+    }
     if (CVarGetInteger(CVAR_SETTING("MatchRefreshRate"), 0)) {
         return Ship::Context::GetRawInstance()->GetWindow()->GetCurrentRefreshRate();
     } else if (CVarGetInteger(CVAR_VSYNC_ENABLED, 1) ||
@@ -1630,6 +1635,7 @@ extern "C" void SaveManager_ThreadPoolWait() {
 }
 
 extern "C" void DeinitOTR() {
+    SohVr::Shutdown();
     SaveManager_ThreadPoolWait();
     WaitForRandoGeneration();
     OTRAudio_Exit();
@@ -1816,7 +1822,9 @@ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
         // Skinned vertices are shared by every displayed frame, so blend them before each run
         FrameInterpolation_UpdateSkinnedVertices(interpolationStep);
         intp->mInterpolationT = interpolationStep;
-        wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
+        if (!SohVr::DrawFrame(wnd.get(), Commands, mtx_replacements)) {
+            wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
+        }
         intp->mInterpolationIndex++;
     }
     ImGui::PopStyleColor();
@@ -1830,6 +1838,7 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
     }
 
     audio.cv_to_thread.notify_one();
+    SohVr::OnTickSubmitted();
     int target_fps = OTRGlobals::Instance->GetInterpolationFPS();
     static int last_fps;
     static int last_update_rate;

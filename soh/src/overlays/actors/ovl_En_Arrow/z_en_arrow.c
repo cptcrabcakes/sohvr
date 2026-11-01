@@ -9,6 +9,7 @@
 #include "objects/object_gi_nuts/object_gi_nuts.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
@@ -242,6 +243,10 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
             Actor_SetProjectileSpeed(&this->actor, 80.0f);
             this->timer = 15;
             this->actor.shape.rot.x = this->actor.shape.rot.y = this->actor.shape.rot.z = 0;
+            // A nut thrown by hand in VR flies in an arc at the hand's speed, so it needs longer to land.
+            if (Vr_LaunchThrownNut(&this->actor)) {
+                this->timer = 60;
+            }
         } else {
             Actor_SetProjectileSpeed(&this->actor, 150.0f);
             this->timer = 12;
@@ -509,6 +514,23 @@ void EnArrow_Draw(Actor* thisx, PlayState* play) {
     EnArrow* this = (EnArrow*)thisx;
     u8 alpha;
     f32 scale;
+
+    // In VR a Deku nut is its item-get model, in the hand and in flight, where the game only shows a sparkle once
+    // it flies.
+    if ((this->actor.params == ARROW_NUT) && Vr_UseVendorModels()) {
+        Matrix_Push();
+        if (this->actor.speedXZ != 0.0f) {
+            Matrix_Translate(this->actor.world.pos.x, this->actor.world.pos.y, this->actor.world.pos.z, MTXMODE_NEW);
+            Matrix_RotateY(BINANG_TO_RAD((s16)(play->gameplayFrames * 3000)), MTXMODE_APPLY);
+        } else {
+            // In the hand it turns with the hand (see Vr_HoldNut).
+            Matrix_SetTranslateRotateYXZ(this->actor.world.pos.x, this->actor.world.pos.y, this->actor.world.pos.z,
+                                         &this->actor.shape.rot);
+        }
+        Matrix_Scale(0.06f, 0.06f, 0.06f, MTXMODE_APPLY);
+        GetItem_Draw(play, GID_NUTS);
+        Matrix_Pop();
+    }
 
     if (this->actor.params <= ARROW_0E) {
         Gfx_SetupDL_25Opa(play->state.gfxCtx);

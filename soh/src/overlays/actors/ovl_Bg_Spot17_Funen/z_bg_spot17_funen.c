@@ -6,6 +6,7 @@
 
 #include "z_bg_spot17_funen.h"
 #include "objects/object_spot17_obj/object_spot17_obj.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -58,7 +59,10 @@ void func_808B7478(Actor* thisx, PlayState* play) {
     OPEN_DISPS(play->state.gfxCtx);
 
     Gfx_SetupDL_25Xlu(play->state.gfxCtx);
-    Matrix_RotateY((s16)(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) - thisx->shape.rot.y + 0x8000) * 9.58738019108e-05f,
+    // In VR the smoke faces the eye from where it is, instead of turning with the head.
+    Matrix_RotateY((s16)(Vr_CameraYawToward(play, &thisx->world.pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) -
+                         thisx->shape.rot.y + 0x8000) *
+                       9.58738019108e-05f,
                    MTXMODE_APPLY);
 
     gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);

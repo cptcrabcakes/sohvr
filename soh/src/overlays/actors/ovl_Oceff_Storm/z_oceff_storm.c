@@ -7,6 +7,7 @@
 #include "z_oceff_storm.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED | ACTOR_FLAG_UPDATE_DURING_OCARINA)
 
@@ -48,6 +49,7 @@ void OceffStorm_Init(Actor* thisx, PlayState* play) {
     this->actor.scale.z = 0.0f;
     this->actor.scale.x = 0.0f;
     this->posYOff = this->posYOffAdd;
+    Vr_StartSongEffect(play, &this->actor);
 
     if (this->actor.params == 1) {
         OceffStorm_SetupAction(this, OceffStorm_UnkAction);
@@ -119,7 +121,10 @@ void OceffStorm_Update(Actor* thisx, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
     this->actor.world.pos = player->actor.world.pos;
-    this->actor.shape.rot.y = Camera_GetCamDirYaw(GET_ACTIVE_CAM(play));
+    // In VR it keeps facing where the head looked when the song started (its back toward the head then), instead
+    // of turning with it.
+    this->actor.shape.rot.y =
+        Vr_IsWorldStereo() ? (s16)(this->actor.home.rot.y + 0x8000) : Camera_GetCamDirYaw(GET_ACTIVE_CAM(play));
     this->actionFunc(this, play);
 }
 

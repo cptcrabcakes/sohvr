@@ -12,6 +12,7 @@
 #include <libultraship/bridge/resourcebridge.h>
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 void func_80095AB4(PlayState* play, Room* room, u32 flags);
@@ -141,6 +142,11 @@ void func_80095D04(PlayState* play, Room* room, u32 flags) {
         sp90.y = polygonDlist->pos.y;
         sp90.z = polygonDlist->pos.z;
         SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &sp90, &sp84, &sp80);
+        // In VR pieces behind the view plane come into view as the head turns, before the next game tick, so
+        // they're kept by their distance from the eye instead of their depth in front of it.
+        if (Vr_IsWorldStereo()) {
+            sp84.z = Math_Vec3f_DistXYZ(&sp90, &play->view.eye);
+        }
         if (-(f32)polygonDlist->unk_06 < sp84.z) {
             temp_f2 = sp84.z - polygonDlist->unk_06;
             if (temp_f2 < play->lightCtx.fogFar) {

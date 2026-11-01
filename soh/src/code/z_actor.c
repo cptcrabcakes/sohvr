@@ -14,6 +14,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/nametag.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #include "soh/ActorDB.h"
 #include "soh/OTRGlobals.h"
@@ -2956,6 +2957,14 @@ s32 Actor_CullingCheck(PlayState* play, Actor* actor) {
 
 s32 Actor_CullingVolumeTest(PlayState* play, Actor* actor, Vec3f* arg2, f32 arg3) {
     f32 var;
+
+    // In VR the head turns between game ticks faster than a test of the view's direction can follow, so anything
+    // within the actor's draw distance counts as in view whichever way the player faces. Testing the frustum made
+    // things pop in at the edges of a quick turn.
+    if (Vr_IsWorldStereo()) {
+        return Math_Vec3f_DistXYZ(&actor->world.pos, &play->view.eye) <
+               (actor->uncullZoneForward + actor->uncullZoneScale);
+    }
 
     if ((arg2->z > -actor->uncullZoneScale) && (arg2->z < (actor->uncullZoneForward + actor->uncullZoneScale))) {
         var = (arg3 < 1.0f) ? 1.0f : 1.0f / arg3;

@@ -6,6 +6,7 @@
 #include "soh/Enhancements/controls/Mouse.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 s32 D_8012D280 = 1;
 
@@ -302,6 +303,7 @@ void PadMgr_ProcessInputs(PadMgr* padMgr) {
 
     uint8_t rumble = (padMgr->rumbleEnable[0] > 0);
     OTRControllerCallback(rumble);
+    Vr_Rumble(rumble);
 
     PadMgr_UnlockPadData(padMgr);
 }
@@ -317,6 +319,7 @@ void PadMgr_HandleRetraceMsg(PadMgr* padMgr) {
     }
     osRecvMesg(queue, NULL, OS_MESG_BLOCK);
     osContGetReadData(padMgr->pads);
+    Vr_OverridePads(padMgr->pads);
 
     Mouse_UpdateAll();
 

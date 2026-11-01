@@ -15,6 +15,7 @@
 #include "soh/SaveManager.h"
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 // #region SOH [NTSC] - Allows custom messages to work on japanese
 static bool sDisplayNextMessageAsEnglish = false;
@@ -4503,6 +4504,11 @@ void Message_Update(PlayState* play) {
                     } else {
                         R_TEXTBOX_Y_TARGET = sTextboxMidYPositions[var];
                     }
+                }
+                // In VR the text box gets its own panel, cut from the HUD like the wrist panels. In the middle it
+                // doesn't cover the hearts, rupees or A button they're cut from.
+                if (Vr_IsWorldStereo()) {
+                    R_TEXTBOX_Y_TARGET = sTextboxMidYPositions[var];
                 }
 
                 R_TEXTBOX_X_TARGET = sTextboxXPositions[var];

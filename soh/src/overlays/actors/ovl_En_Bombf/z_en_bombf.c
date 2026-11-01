@@ -7,6 +7,7 @@
 #include "z_en_bombf.h"
 #include "objects/object_bombf/object_bombf.h"
 #include "overlays/effects/ovl_Effect_Ss_Dead_Sound/z_eff_ss_dead_sound.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -377,7 +378,13 @@ void EnBombf_Update(Actor* thisx, PlayState* play) {
         if (this->isFuseEnabled != 0) {
             dustAccel.y = 0.2f;
             effPos = thisx->world.pos;
-            effPos.y += 25.0f;
+            // In VR the shop's bomb stands in (see EnBombf_Draw), and its fuse tip is 11 units above its center:
+            // 22 up on the ground, 11 in a hand.
+            if (Vr_UseVendorModels()) {
+                effPos.y += (thisx->parent != NULL) ? 11.0f : 22.0f;
+            } else {
+                effPos.y += 25.0f;
+            }
             if (this->timer < 127) {
                 // spawn spark effect on even frames
                 if ((play->gameplayFrames % 2) == 0) {
@@ -491,12 +498,23 @@ void EnBombf_Draw(Actor* thisx, PlayState* play) {
             Matrix_Scale(this->flowerBombScale, this->flowerBombScale, this->flowerBombScale, MTXMODE_APPLY);
         }
 
-        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 200, 255, 200, 255);
-        gDPPipeSync(POLY_OPA_DISP++);
-        gDPSetEnvColor(POLY_OPA_DISP++, (s16)this->flashIntensity, 20, 10, 0);
-        gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-        gSPSegment(POLY_OPA_DISP++, 0x08, SEGMENTED_TO_VIRTUAL(EnBombf_NewMtxDList(play->state.gfxCtx, play)));
-        gSPDisplayList(POLY_OPA_DISP++, gBombFlowerBombAndSparkDL);
+        if (Vr_UseVendorModels()) {
+            // In VR the bomb is the shop's 3D bomb, as plain bombs are (see EnBom_Draw), at the flower's size: about
+            // 22 units across at the actor's 0.01, sitting on its origin, or centered on it in a hand.
+            f32 lift = ((thisx->params == BOMBFLOWER_BODY) && (thisx->parent != NULL)) ? 0.0f : 1100.0f;
+
+            Matrix_Translate(0.0f, lift, 0.0f, MTXMODE_APPLY);
+            Matrix_Scale(37.0f, 37.0f, 37.0f, MTXMODE_APPLY);
+            GetItem_Draw(play, GID_BOMB);
+        } else {
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 200, 255, 200, 255);
+            gDPPipeSync(POLY_OPA_DISP++);
+            gDPSetEnvColor(POLY_OPA_DISP++, (s16)this->flashIntensity, 20, 10, 0);
+            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx),
+                      G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            gSPSegment(POLY_OPA_DISP++, 0x08, SEGMENTED_TO_VIRTUAL(EnBombf_NewMtxDList(play->state.gfxCtx, play)));
+            gSPDisplayList(POLY_OPA_DISP++, gBombFlowerBombAndSparkDL);
+        }
     } else {
         Collider_UpdateSpheres(0, &this->explosionCollider);
     }

@@ -9,6 +9,7 @@
 #include <libultraship/bridge/gfxdebuggerbridge.h>
 #include <libultraship/bridge/windowbridge.h>
 #include "soh/Enhancements/gameconsole.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "soh/OTRGlobals.h"
 
 #define GFXPOOL_HEAD_MAGIC 0x1234
@@ -309,9 +310,11 @@ void Graph_Update(GraphicsContext* gfxCtx, GameState* gameState) {
 
     gSPBranchList(WORK_DISP++, gfxCtx->polyOpaBuffer);
     gSPBranchList(POLY_OPA_DISP++, gfxCtx->polyXluBuffer);
+    Gfx* overlayBranch = POLY_XLU_DISP;
     gSPBranchList(POLY_XLU_DISP++, gfxCtx->overlayBuffer);
     gDPPipeSync(OVERLAY_DISP++);
     gDPFullSync(OVERLAY_DISP++);
+    Vr_OnGraphBuilt(overlayBranch, gfxCtx->overlayBuffer, OVERLAY_DISP);
     gSPEndDisplayList(OVERLAY_DISP++);
 
     CLOSE_DISPS(gfxCtx);

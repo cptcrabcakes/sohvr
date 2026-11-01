@@ -6,6 +6,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/Enhancements/vr/Vr.h"
 
 #define FLAGS 0
 
@@ -768,7 +769,7 @@ void EnItem00_Update(Actor* thisx, PlayState* play) {
         this->actor.params == ITEM00_BOMBS_A || this->actor.params == ITEM00_ARROWS_SINGLE ||
         this->actor.params == ITEM00_BOMBS_SPECIAL ||
         (this->actor.params >= ITEM00_BOMBCHU && this->actor.params <= ITEM00_SOH_GIVE_ITEM_ENTRY_GI)) {
-        if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0) ||
+        if (Vr_UseNewDrops() ||
             (this->actor.params >= ITEM00_SOH_DUMMY && this->actor.params <= ITEM00_SOH_GIVE_ITEM_ENTRY_GI)) {
             this->actor.shape.rot.y += 960;
         } else {
@@ -839,8 +840,12 @@ void EnItem00_Update(Actor* thisx, PlayState* play) {
         return;
     }
 
-    if (!((this->actor.xzDistToPlayer <= 30.0f) && (this->actor.yDistToPlayer >= -50.0f) &&
-          (this->actor.yDistToPlayer <= 50.0f))) {
+    // In VR, ammo and magic have to be picked up by hand rather than walked into.
+    bool collected = Vr_DropNeedsGrab(this->actor.params)
+                         ? Vr_HandGrabsAt(&this->actor.world.pos)
+                         : ((this->actor.xzDistToPlayer <= 30.0f) && (this->actor.yDistToPlayer >= -50.0f) &&
+                            (this->actor.yDistToPlayer <= 50.0f));
+    if (!collected) {
         if (!Actor_HasParent(&this->actor, play)) {
             return;
         }
@@ -990,7 +995,7 @@ void EnItem00_Draw(Actor* thisx, PlayState* play) {
     f32 mtxScale;
 
     // Setup Hilites for 3D drops
-    if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+    if (Vr_UseNewDrops()) {
         func_8002EBCC(&this->actor, play, 0);
         func_8002ED80(&this->actor, play, 0);
     }
@@ -998,35 +1003,35 @@ void EnItem00_Draw(Actor* thisx, PlayState* play) {
     if (!(this->unk_156 & this->unk_158)) {
         switch (this->actor.params) {
             case ITEM00_RUPEE_GREEN:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 25.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_RUPEE_GREEN);
                     break;
                 }
             case ITEM00_RUPEE_BLUE:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 25.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_RUPEE_BLUE);
                     break;
                 }
             case ITEM00_RUPEE_RED:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 25.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_RUPEE_RED);
                     break;
                 }
             case ITEM00_RUPEE_ORANGE:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 17.5f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_RUPEE_GOLD);
                     break;
                 }
             case ITEM00_RUPEE_PURPLE:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 17.5f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_RUPEE_PURPLE);
@@ -1036,7 +1041,7 @@ void EnItem00_Draw(Actor* thisx, PlayState* play) {
                 }
                 break;
             case ITEM00_HEART_PIECE:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 21.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_HEART_PIECE);
@@ -1049,7 +1054,7 @@ void EnItem00_Draw(Actor* thisx, PlayState* play) {
                 break;
             case ITEM00_HEART:
                 // Only change despawn-able recovery hearts
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0) && this->unk_15A >= 0) {
+                if (Vr_UseNewDrops() && this->unk_15A >= 0) {
                     mtxScale = 16.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_HEART);
@@ -1075,7 +1080,7 @@ void EnItem00_Draw(Actor* thisx, PlayState* play) {
             case ITEM00_BOMBS_A:
             case ITEM00_BOMBS_B:
             case ITEM00_BOMBS_SPECIAL:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 8.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_BOMB);
@@ -1083,70 +1088,70 @@ void EnItem00_Draw(Actor* thisx, PlayState* play) {
                 }
             case ITEM00_ARROWS_SINGLE:
             case ITEM00_ARROWS_SMALL:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 7.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_ARROWS_SMALL);
                     break;
                 }
             case ITEM00_ARROWS_MEDIUM:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 7.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_ARROWS_MEDIUM);
                     break;
                 }
             case ITEM00_ARROWS_LARGE:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 7.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_ARROWS_LARGE);
                     break;
                 }
             case ITEM00_NUTS:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 9.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_NUTS);
                     break;
                 }
             case ITEM00_STICK:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 7.5f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_STICK);
                     break;
                 }
             case ITEM00_MAGIC_LARGE:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 8.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_MAGIC_LARGE);
                     break;
                 }
             case ITEM00_MAGIC_SMALL:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 8.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_MAGIC_SMALL);
                     break;
                 }
             case ITEM00_SEEDS:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 7.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_SEEDS);
                     break;
                 }
             case ITEM00_BOMBCHU:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 9.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_BOMBCHU);
                     break;
                 }
             case ITEM00_SMALL_KEY:
-                if (CVarGetInteger(CVAR_ENHANCEMENT("NewDrops"), 0)) {
+                if (Vr_UseNewDrops()) {
                     mtxScale = 8.0f;
                     Matrix_Scale(mtxScale, mtxScale, mtxScale, MTXMODE_APPLY);
                     GetItem_Draw(play, GID_KEY_SMALL);

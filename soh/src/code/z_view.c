@@ -6,6 +6,7 @@
 #include <assert.h>
 
 #include "soh/frame_interpolation.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 vu32 D_8012ABF0 = true;
 
@@ -153,7 +154,8 @@ void func_800AA550(View* view) {
     s32 lry;
     GraphicsContext* gfxCtx = view->gfxCtx;
 
-    varY = ShrinkWindow_GetCurrentVal();
+    // In VR the world isn't letterboxed; the bars would cut off the top and bottom of each eye's view.
+    varY = Vr_IsWorldStereo() ? 0 : ShrinkWindow_GetCurrentVal();
 
     varX = -1; // The following is optimized to varX = 0 but affects codegen
 
@@ -476,6 +478,7 @@ s32 func_800AAA9C(View* view) {
     gSPMatrix(POLY_OPA_DISP++, viewing, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
     gSPMatrix(POLY_XLU_DISP++, viewing, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
     FrameInterpolation_RecordCloseChild();
+    Vr_OnViewApplied(view, projection, viewing);
 
     CLOSE_DISPS(gfxCtx);
 

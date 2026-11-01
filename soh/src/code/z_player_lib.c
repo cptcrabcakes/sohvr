@@ -10,6 +10,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/randomizer/draw.h"
 #include "soh/ResourceManagerHelpers.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -1542,7 +1543,8 @@ void Player_UpdateShieldCollider(PlayState* play, Player* this, ColliderQuad* co
         COLTYPE_METAL,
     };
 
-    if (this->stateFlags1 & PLAYER_STATE1_SHIELDING) {
+    // In VR a shield held in hand blocks wherever the player holds it, without the shield button.
+    if ((this->stateFlags1 & PLAYER_STATE1_SHIELDING) || Vr_HoldsShield(this)) {
         Vec3f quadDest[4];
 
         this->shieldQuad.base.colType = shieldColTypes[this->currentShield];
@@ -1570,6 +1572,8 @@ Vec3f D_801260A4[3] = {
 
 void func_800906D4(PlayState* play, Player* this, Vec3f* newTipPos) {
     Vec3f newBasePos[3];
+    // In VR the blade is also live whenever it's swung fast enough by hand.
+    s32 vrSwing = Vr_SwordSwing(this, &newTipPos[1]);
 
     Matrix_MultVec3f(&D_801260A4[0], &newBasePos[0]);
     Matrix_MultVec3f(&D_801260A4[1], &newBasePos[1]);
@@ -1577,15 +1581,20 @@ void func_800906D4(PlayState* play, Player* this, Vec3f* newTipPos) {
 
     if (func_80090480(play, NULL, &this->meleeWeaponInfo[0], &newTipPos[0], &newBasePos[0]) &&
         !(this->stateFlags1 & PLAYER_STATE1_SHIELDING) &&
-        !CVarGetInteger(CVAR_ENHANCEMENT("DisableLinkSwordTrail"), 0)) {
+        !CVarGetInteger(CVAR_ENHANCEMENT("DisableLinkSwordTrail"), 0) && !Vr_IsWorldStereo()) {
         EffectBlure_AddVertex(Effect_GetByIndex(this->meleeWeaponEffectIndex), &this->meleeWeaponInfo[0].tip,
                               &this->meleeWeaponInfo[0].base);
     }
 
-    if ((this->meleeWeaponState > 0) &&
-        ((this->meleeWeaponAnimation < 0x18) || (this->stateFlags2 & PLAYER_STATE2_SPIN_ATTACKING))) {
+    if (((this->meleeWeaponState > 0) &&
+         ((this->meleeWeaponAnimation < 0x18) || (this->stateFlags2 & PLAYER_STATE2_SPIN_ATTACKING))) ||
+        vrSwing) {
         func_80090480(play, &this->meleeWeaponQuads[0], &this->meleeWeaponInfo[1], &newTipPos[1], &newBasePos[1]);
         func_80090480(play, &this->meleeWeaponQuads[1], &this->meleeWeaponInfo[2], &newTipPos[2], &newBasePos[2]);
+    } else if (Vr_IsWorldStereo()) {
+        // Keep the swept hitbox's trailing edge on the blade, so the next swing sweeps from where it really is.
+        func_80090480(play, NULL, &this->meleeWeaponInfo[1], &newTipPos[1], &newBasePos[1]);
+        func_80090480(play, NULL, &this->meleeWeaponInfo[2], &newTipPos[2], &newBasePos[2]);
     }
 }
 
@@ -1734,6 +1743,49 @@ void Player_DrawHookshotReticle(PlayState* play, Player* this, f32 hookshotRange
     }
 }
 
+// In VR the sight dot goes out from the tip of the hookshot in hand, the way it points, and is drawn in the world:
+// the overlay Player_DrawHookshotReticle draws into is cut from the eyes' view for the wrist panels. The dot's model
+// turns itself with the billboard on segment 1, so that's pointed at a rotation facing the eye for it and put back
+// after. It keeps about the same size in view, as the game's does.
+static void Player_DrawHookshotReticleVr(PlayState* play, Player* this) {
+    Vec3f tip;
+    Vec3f direction;
+    Vec3f end;
+    Vec3f hit;
+    CollisionPoly* colPoly;
+    s32 bgId;
+    f32 range = ((this->heldItemAction == PLAYER_IA_HOOKSHOT) ? 386.0f : 776.0f) *
+                CVarGetFloat(CVAR_CHEAT("HookshotReachMultiplier"), 1.0f);
+
+    if (!Vr_HookshotSight(this, &tip, &direction)) {
+        return;
+    }
+    end.x = tip.x + direction.x * range;
+    end.y = tip.y + direction.y * range;
+    end.z = tip.z + direction.z * range;
+    if (BgCheck_AnyLineTest3(&play->colCtx, &tip, &end, &hit, &colPoly, 1, 1, 1, 1, &bgId)) {
+        f32 distance = Math_Vec3f_DistXYZ(&hit, &play->view.eye);
+        f32 scale = (distance < 200.0f) ? 0.08f : (distance / 200.0f) * 0.08f;
+
+        OPEN_DISPS(play->state.gfxCtx);
+
+        POLY_XLU_DISP = Gfx_SetupDL(POLY_XLU_DISP, 0x07);
+        Matrix_Push();
+        Matrix_Translate(hit.x, hit.y, hit.z, MTXMODE_NEW);
+        Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
+        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+        if (GameInteractor_Should(VB_TARGETABLE_HOOKSHOT_RETICLE, true, colPoly, bgId)) {
+            gSPSegment(POLY_XLU_DISP++, 0x01, Vr_FacingBillboard(play, &hit));
+            gSPSegment(POLY_XLU_DISP++, 0x06, play->objectCtx.status[this->actor.objBankIndex].segment);
+            gSPDisplayList(POLY_XLU_DISP++, gLinkAdultHookshotReticleDL);
+            gSPSegment(POLY_XLU_DISP++, 0x01, play->billboardMtx);
+        }
+        Matrix_Pop();
+
+        CLOSE_DISPS(play->state.gfxCtx);
+    }
+}
+
 // Coordinates of the player focus position, in the head limb's own model space.
 Vec3f sPlayerFocusOffsetFromHead = { 1100.0f, -700.0f, 0.0f };
 
@@ -1760,6 +1812,33 @@ BowStringData sBowStringData[] = {
     { gLinkAdultBowStringDL, { 0.0f, -360.4f, 0.0f } },        // bow
     { gLinkChildSlingshotStringDL, { 606.0f, 236.0f, 0.0f } }, // slingshot
 };
+
+// Where the middle of each string model is when fully drawn, from the models' vertices. Their ends are at y = 0.
+static Vec3f sVrStringMiddles[] = {
+    { 360.0f, -1160.0f, 0.0f },  // bow
+    { -10.0f, -1325.0f, 55.0f }, // slingshot
+};
+
+// Stretches a string model so its ends stay where they are and its middle goes to the hand (a world position).
+// Each point keeps x and z and is carried toward the hand in proportion to how far down the string it is.
+static s32 Player_PullStringVr(Vec3f* middle, Vec3f* hand) {
+    MtxF local;
+    MtxF inverse;
+    MtxF pull;
+    Vec3f target;
+
+    Matrix_Get(&local);
+    if (SkinMatrix_Invert(&local, &inverse) != 0) {
+        return false;
+    }
+    SkinMatrix_Vec3fMtxFMultXYZ(&inverse, hand, &target);
+    SkinMatrix_Clear(&pull);
+    pull.mf[1][0] = (target.x - middle->x) / middle->y;
+    pull.mf[1][1] = target.y / middle->y;
+    pull.mf[1][2] = (target.z - middle->z) / middle->y;
+    Matrix_Mult(&pull, MTXMODE_APPLY);
+    return true;
+}
 
 Vec3f sRightHandLimbModelShieldQuadVertices[] = {
     { -4500.0f, -3000.0f, -600.0f },
@@ -1807,7 +1886,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             if (this->actor.scale.y >= 0.0f) {
                 D_80126080.x = this->unk_85C * 5000.0f;
                 func_80090A28(this, sp124);
-                if (this->meleeWeaponState != 0) {
+                if ((this->meleeWeaponState != 0) || Vr_HoldsBlade(this)) {
                     EffectBlureShip_ChangeType(Effect_GetByIndex(this->meleeWeaponEffectIndex), TRAIL_TYPE_STICK);
                     func_800906D4(play, this, sp124);
                 } else {
@@ -1823,7 +1902,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             gSPDisplayList(POLY_OPA_DISP++, gLinkChildLinkDekuStickDL);
 
             CLOSE_DISPS(play->state.gfxCtx);
-        } else if ((this->actor.scale.y >= 0.0f) && (this->meleeWeaponState != 0)) {
+        } else if ((this->actor.scale.y >= 0.0f) && ((this->meleeWeaponState != 0) || Vr_HoldsBlade(this))) {
             Vec3f spE4[3];
 
             if (Player_HoldsBrokenKnife(this)) {
@@ -1858,6 +1937,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                     Matrix_Get(&sp14C);
                     Matrix_MtxFToYXZRotS(&sp14C, &hookedActor->world.rot, 0);
                     hookedActor->shape.rot = hookedActor->world.rot;
+                    Vr_PlaceNockedArrow(this, hookedActor);
                 } else if (this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) {
                     Vec3s spB8;
 
@@ -1888,13 +1968,23 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                 stringModelToUse = Player_HoldsSlingshot(this);
             }
             BowStringData* stringData = &sBowStringData[stringModelToUse];
+            Vec3f pull;
+            s32 pulled = false;
 
             OPEN_DISPS(play->state.gfxCtx);
 
             Matrix_Push();
             Matrix_Translate(stringData->pos.x, stringData->pos.y, stringData->pos.z, MTXMODE_APPLY);
 
-            if ((this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) && (this->unk_860 >= 0) && (this->unk_834 <= 10)) {
+            if (Vr_UseVendorModels()) {
+                // In VR the string goes to the drawing hand while it draws, and rests straight otherwise.
+                if (Vr_StringPull(this, &pull)) {
+                    pulled = Player_PullStringVr(&sVrStringMiddles[stringModelToUse], &pull);
+                } else {
+                    this->unk_858 = 0.0f;
+                }
+            } else if ((this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) && (this->unk_860 >= 0) &&
+                       (this->unk_834 <= 10)) {
                 Vec3f sp90;
                 f32 distXYZ;
 
@@ -1914,10 +2004,12 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                 this->unk_85C = -0.5f;
             }
 
-            Matrix_Scale(1.0f, this->unk_858, 1.0f, MTXMODE_APPLY);
+            if (!pulled) {
+                Matrix_Scale(1.0f, this->unk_858, 1.0f, MTXMODE_APPLY);
 
-            if (!LINK_IS_ADULT) {
-                Matrix_RotateZ(this->unk_858 * -0.2f, MTXMODE_APPLY);
+                if (!LINK_IS_ADULT) {
+                    Matrix_RotateZ(this->unk_858 * -0.2f, MTXMODE_APPLY);
+                }
             }
 
             gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
@@ -1948,13 +2040,18 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                     Matrix_MtxFToYXZRotS(&sp44, &heldActor->world.rot, 0);
                     heldActor->shape.rot = heldActor->world.rot;
 
-                    if (func_8002DD78(this) != 0) {
+                    if ((func_8002DD78(this) != 0) && !Vr_IsWorldStereo()) {
                         Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
                         Player_DrawHookshotReticle(
                             play, this,
                             ((this->heldItemAction == PLAYER_IA_HOOKSHOT) ? 38600.0f : 77600.0f) *
                                 CVarGetFloat(CVAR_CHEAT("HookshotReachMultiplier"), 1.0f));
                     }
+                }
+                Vr_PlaceHookshot(this, &this->unk_3C8, heldActor);
+                // While the hook is in the hookshot, its sight dot shows where it would catch, within range.
+                if ((heldActor != NULL) && Vr_IsWorldStereo()) {
+                    Player_DrawHookshotReticleVr(play, this);
                 }
             }
 
@@ -1970,6 +2067,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
                 if (this->unk_862 == 0) {
                     Math_Vec3f_Copy(&heldActor->world.pos, &sGetItemRefPos);
+                    Vr_PlaceHeldActor(this, heldActor);
                 }
             }
         }

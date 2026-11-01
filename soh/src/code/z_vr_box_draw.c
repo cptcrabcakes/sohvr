@@ -1,6 +1,7 @@
 #include "global.h"
 
 #include "soh/frame_interpolation.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 Mtx* sSkyboxDrawMatrix;
 
@@ -36,6 +37,11 @@ void SkyboxDraw_Draw(SkyboxContext* skyboxCtx, GraphicsContext* gfxCtx, s16 skyb
     Matrix_RotateY(skyboxCtx->rot.y, MTXMODE_APPLY);
     Matrix_RotateZ(skyboxCtx->rot.z, MTXMODE_APPLY);
     MATRIX_TOMTX(sSkyboxDrawMatrix);
+    {
+        MtxF skyboxMatrix;
+        Matrix_Get(&skyboxMatrix);
+        Vr_OnSkyboxDrawn(sSkyboxDrawMatrix, &skyboxMatrix);
+    }
     gSPMatrix(POLY_OPA_DISP++, sSkyboxDrawMatrix, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
     gDPSetColorDither(POLY_OPA_DISP++, G_CD_MAGICSQ);

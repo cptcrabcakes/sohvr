@@ -630,6 +630,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     link_libraries(Opus::opus)
     find_package(OpusFile CONFIG REQUIRED)
     link_libraries(OpusFile::opusfile CONFIG REQUIRED)
+    find_package(OpenXR CONFIG REQUIRED)
     if(SOH_WINDOWS_64BIT)
         set(ADDITIONAL_LIBRARY_DEPENDENCIES
             "libultraship;"
@@ -649,6 +650,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
             "Vorbis::vorbisenc"
             "Vorbis::vorbisfile"
             "OpusFile::opusfile"
+            "OpenXR::headers"
+            "OpenXR::openxr_loader"
         )
     elseif("${CMAKE_VS_PLATFORM_NAME}" STREQUAL "Win32")
         set(ADDITIONAL_LIBRARY_DEPENDENCIES

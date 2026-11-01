@@ -2,6 +2,7 @@
 #include "vt.h"
 
 #include "soh/frame_interpolation.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 // clang-format off
 MtxF sMtxFClear = {
@@ -64,6 +65,13 @@ void SkinMatrix_MtxFMtxFMult(MtxF* mfA, MtxF* mfB, MtxF* dest) {
     f32 cy;
     f32 cz;
     f32 cw;
+    MtxF facing;
+
+    // In VR a billboard (mfB, applied under mfA's translation) faces the eye from where it's drawn, instead of
+    // turning with the head.
+    if ((mfB == gVrBillboard) && (mfB != NULL) && Vr_FacingRotation(mfA->xw, mfA->yw, mfA->zw, &facing)) {
+        mfB = &facing;
+    }
     //---ROW1---
     f32 rx = mfA->xx;
     f32 ry = mfA->xy;

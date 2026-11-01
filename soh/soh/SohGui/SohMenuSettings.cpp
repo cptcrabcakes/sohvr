@@ -8,6 +8,7 @@
 #include "UIWidgets.hpp"
 #include <ship/controller/controldeck/ControlDeck.h>
 #include <ship/Context.h>
+#include <tuple>
 
 extern "C" {
 #include "include/z64audio.h"
@@ -42,6 +43,25 @@ static const std::map<int32_t, const char*> menuThemeOptions = {
     { UIWidgets::Colors::Brown, "Brown" },
     { UIWidgets::Colors::Gray, "Gray" },
     { UIWidgets::Colors::DarkGray, "Dark Gray" },
+};
+
+// Matches SohVr::RuntimeChoice.
+static const std::map<int32_t, const char*> vrRuntimeMap = {
+    { 0, "Auto" },
+    { 1, "System Default" },
+    { 2, "SteamVR" },
+};
+
+static const std::map<int32_t, const char*> vrSwordHandMap = {
+    { 0, "Left (like Link)" },
+    { 1, "Right (hands swapped)" },
+};
+
+// Extra rotation of each of Link's hand models on its controller, about the grip's axes.
+static const std::tuple<const char*, const char*, int32_t> vrHandTuningSliders[] = {
+    { CVAR_SETTING("VR.HandL.TuneX"), "Sword Hand X: %d", 0 },  { CVAR_SETTING("VR.HandL.TuneY"), "Sword Hand Y: %d", 0 },
+    { CVAR_SETTING("VR.HandL.TuneZ"), "Sword Hand Z: %d", 0 },  { CVAR_SETTING("VR.HandR.TuneX"), "Shield Hand X: %d", 0 },
+    { CVAR_SETTING("VR.HandR.TuneY"), "Shield Hand Y: %d", 0 }, { CVAR_SETTING("VR.HandR.TuneZ"), "Shield Hand Z: %d", 0 },
 };
 
 static const std::map<int32_t, const char*> textureFilteringMap = {
@@ -477,6 +497,87 @@ void SohMenu::AddMenuSettings() {
         .WindowName("Input Viewer Settings")
         .HideInSearch(true)
         .Options(WindowButtonOptions().Tooltip("Enables the separate Input Viewer Settings Window."));
+
+    // VR
+    path.sidebarName = "VR";
+    path.column = SECTION_COLUMN_1;
+    AddSidebarEntry("Settings", path.sidebarName, 1);
+    AddWidget(path, "Enable VR", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.Enabled"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip("Plays in an OpenXR headset (Quest Link, Virtual Desktop, SteamVR). "
+                                           "Needs the DirectX 11 renderer."));
+    AddWidget(path, "OpenXR Runtime", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("VR.Runtime"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .ComboMap(vrRuntimeMap)
+                     .DefaultIndex(0)
+                     .Tooltip("Auto uses SteamVR while it's running, and otherwise the runtime Windows has set as "
+                              "active. This only affects this game. Turn VR off and on to apply a change."));
+    AddWidget(path, "Your Height: %d cm", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.PlayerHeight"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions()
+                     .Min(100)
+                     .Max(220)
+                     .DefaultValue(170)
+                     .ShowButtons(true)
+                     .Format("")
+                     .Tooltip("Link's height is mapped onto yours, so the world grows when he's a child."));
+    AddWidget(path, "Adult World Scale: %d%%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.AdultWorldScale"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions()
+                     .Min(70)
+                     .Max(150)
+                     .DefaultValue(100)
+                     .ShowButtons(true)
+                     .Format("")
+                     .Tooltip("How big the world looks as an adult. Raise it if people and doors look too small."));
+    AddWidget(path, "Child World Scale: %d%%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.ChildWorldScale"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions()
+                     .Min(70)
+                     .Max(150)
+                     .DefaultValue(100)
+                     .ShowButtons(true)
+                     .Format("")
+                     .Tooltip("How big the world looks as a child. Raise it if people and doors look too small."));
+    AddWidget(path, "Pick Up Drops by Hand", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.GrabDrops"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Ammo and magic drops are picked up by closing a hand on them. Off, they're collected by walking into "
+            "them, as rupees and hearts are."));
+    AddWidget(path, "Snap Turn: %d degrees", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.SnapTurn"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions()
+                     .Min(0)
+                     .Max(90)
+                     .DefaultValue(30)
+                     .ShowButtons(true)
+                     .Format("")
+                     .Tooltip("How far one flick of the right stick turns you. 0 turns smoothly instead."));
+    AddWidget(path, "Sword Hand", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("VR.SwordInRightHand"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .ComboMap(vrSwordHandMap)
+                     .DefaultIndex(0)
+                     .Tooltip("Link is left-handed. Swapping puts his sword hand on the right controller, at the "
+                              "cost of each hand model showing on the opposite side."));
+
+    // Temporary, for lining the hand models up exactly.
+    AddWidget(path, "Hand Fine Tuning", WIDGET_SEPARATOR_TEXT);
+    for (const auto& [cvar, label, defaultValue] : vrHandTuningSliders) {
+        AddWidget(path, label, WIDGET_CVAR_SLIDER_INT)
+            .CVar(cvar)
+            .RaceDisable(false)
+            .Options(IntSliderOptions().Min(-180).Max(180).DefaultValue(defaultValue).ShowButtons(true).Format(""));
+    }
 
     // Notifications
     path.sidebarName = "Notifications";

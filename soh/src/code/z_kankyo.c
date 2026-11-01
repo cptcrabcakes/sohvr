@@ -8,6 +8,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/savestate_serialize.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 typedef enum {
@@ -1366,6 +1367,13 @@ void Environment_DrawSunAndMoon(PlayState* play) {
             VTX(32, 32, 0, 2016, 2016, 255, 255, 255, 255),
         };
 
+        // In VR the sun faces the eye rather than turning with the head.
+        if (Vr_IsWorldStereo()) {
+            Vec3f sunWorld = { play->view.eye.x + play->envCtx.sunPos.x, play->view.eye.y + play->envCtx.sunPos.y,
+                               play->view.eye.z + play->envCtx.sunPos.z };
+            gSPSegment(POLY_OPA_DISP++, 0x01, Vr_FacingBillboard(play, &sunWorld));
+        }
+
         // Replacement for gSunDL
         gSPMatrix(POLY_OPA_DISP++, SEG_ADDR(1, 0), G_MTX_NOPUSH | G_MTX_MUL | G_MTX_MODELVIEW);
         gDPPipeSync(POLY_OPA_DISP++);
@@ -1403,8 +1411,19 @@ void Environment_DrawSunAndMoon(PlayState* play) {
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 240, 255, 180, alpha);
                 gDPSetEnvColor(POLY_OPA_DISP++, 80, 70, 20, alpha);
             }
+            if (Vr_IsWorldStereo()) {
+                Vec3f moonWorld = { play->view.eye.x - play->envCtx.sunPos.x,
+                                    play->view.eye.y - play->envCtx.sunPos.y,
+                                    play->view.eye.z - play->envCtx.sunPos.z };
+                gSPSegment(POLY_OPA_DISP++, 0x01, Vr_FacingBillboard(play, &moonWorld));
+            }
             gSPDisplayList(POLY_OPA_DISP++, gMoonDL);
         }
+    }
+
+    // Everything drawn after the sun and moon uses the game's own billboard again.
+    if (Vr_IsWorldStereo()) {
+        gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
     }
 
     CLOSE_DISPS(play->state.gfxCtx);
@@ -1518,7 +1537,10 @@ void Environment_DrawLensFlare(PlayState* play, EnvironmentContext* envCtx, View
             func_800C016C(play, &pos, &screenPos);
             D_8015FD7E = (s16)screenPos.x;
             D_8015FD80 = (s16)screenPos.y - 5.0f;
-            if (D_8011FB44 != 0xFFFC || screenPos.x < 0.0f || screenPos.y < shrink || screenPos.x > SCREEN_WIDTH ||
+            // In VR the depth read that hides the flare behind walls (D_8011FB44) is the HUD's, not the eyes', so a
+            // wall between the eye and the sun hides it instead.
+            bool sunHidden = Vr_IsWorldStereo() ? Vr_SightBlocked(play, &pos, 4000.0f, 0.0f) : (D_8011FB44 != 0xFFFC);
+            if (sunHidden || screenPos.x < 0.0f || screenPos.y < shrink || screenPos.x > SCREEN_WIDTH ||
                 screenPos.y > (SCREEN_HEIGHT - shrink)) {
                 isOffScreen = true;
             }

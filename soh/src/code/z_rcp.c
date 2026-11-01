@@ -1,6 +1,7 @@
 #include "global.h"
 #include <assert.h>
 #include "soh/OTRGlobals.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 Gfx sSetupDL[SETUPDL_MAX][6] = {
     {
@@ -1540,6 +1541,12 @@ void Gfx_SetupFrame(GraphicsContext* gfxCtx, u8 r, u8 g, u8 b) {
 
     if ((R_PAUSE_MENU_MODE < 2) && (gTrnsnUnkState < 2)) {
         s32 letterboxSize = ShrinkWindow_GetCurrentVal(); // Upstream TODO: Letterbox
+
+        // In VR the world fills the headset and the HUD is cut into wrist panels, where the letterbox's bars
+        // would cover the hearts and rupees.
+        if (Vr_IsWorldStereo()) {
+            letterboxSize = 0;
+        }
 
         if (HREG(80) == 16) {
             if (HREG(95) != 16) {

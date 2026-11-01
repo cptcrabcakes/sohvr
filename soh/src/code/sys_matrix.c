@@ -2,6 +2,7 @@
 
 #include "soh/frame_interpolation.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include <assert.h>
 
 // clang-format off
@@ -59,6 +60,13 @@ MtxF* Matrix_GetCurrent(void) {
 }
 
 void Matrix_Mult(MtxF* mf, u8 mode) {
+    MtxF facing;
+
+    // In VR a billboard faces the eye from where it's drawn, instead of turning with the head.
+    if ((mf == gVrBillboard) && (mf != NULL) && (mode == MTXMODE_APPLY) &&
+        Vr_FacingRotation(sCurrentMatrix->xw, sCurrentMatrix->yw, sCurrentMatrix->zw, &facing)) {
+        mf = &facing;
+    }
     FrameInterpolation_RecordMatrixMult(mf, mode);
     MtxF* cmf = Matrix_GetCurrent();
 
@@ -652,6 +660,13 @@ void Matrix_Transpose(MtxF* mf) {
  * seen as replacing the R rotation with `mf`, hence the function name.
  */
 void Matrix_ReplaceRotation(MtxF* mf) {
+    MtxF facing;
+
+    // In VR a billboard faces the eye from where it's drawn, instead of turning with the head.
+    if ((mf == gVrBillboard) && (mf != NULL) &&
+        Vr_FacingRotation(sCurrentMatrix->xw, sCurrentMatrix->yw, sCurrentMatrix->zw, &facing)) {
+        mf = &facing;
+    }
     FrameInterpolation_RecordMatrixReplaceRotation(mf);
     MtxF* cmf = sCurrentMatrix;
     f32 acc;

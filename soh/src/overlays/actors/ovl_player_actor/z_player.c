@@ -30,6 +30,7 @@
 #include "soh/frame_interpolation.h"
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -2487,6 +2488,15 @@ s32 Player_GetItemOnButton(PlayState* play, s32 index) {
     }
 }
 
+// In VR, what a bottle taken out with something in it holds, given to it once it's in hand (see
+// VR_REQUEST_HOLD_BOTTLE). ITEM_NONE when there's none waiting.
+static u8 sVrBottleContent = ITEM_NONE;
+
+static s32 Player_HoldsBottleVr(Player* this) {
+    return (this->heldItemAction >= PLAYER_IA_BOTTLE) && (this->heldItemAction <= PLAYER_IA_BOTTLE_FAIRY) &&
+           !(this->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM);
+}
+
 /**
  * Handles the high level item usage and changing process based on the B and C buttons.
  *
@@ -2518,6 +2528,40 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
     }
 
     if (!(this->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_CUTSCENE)) && !func_8008F128(this)) {
+        // In VR items come from the belt menu and the sword from over the shoulder, not from buttons.
+        s32 vrRequest = Vr_TakeItemRequest();
+        if (vrRequest == VR_REQUEST_DRAW_SWORD) {
+            Player_UseItem(play, this, B_BTN_ITEM);
+            return;
+        } else if (vrRequest == VR_REQUEST_PUT_AWAY) {
+            Player_UseItem(play, this, ITEM_NONE);
+            return;
+        } else if (vrRequest == VR_REQUEST_USE_HELD) {
+            if (this->heldItemId < ITEM_NONE_FE) {
+                Player_UseItem(play, this, this->heldItemId);
+            }
+            return;
+        } else if (vrRequest == VR_REQUEST_HOLD_BOTTLE) {
+            s32 button = Vr_ItemRequestButton();
+
+            if (button >= 0) {
+                this->heldItemButton = button;
+            }
+            sVrBottleContent = Vr_TakeBottleContent();
+            if (!Player_HoldsBottleVr(this)) {
+                Player_UseItem(play, this, ITEM_BOTTLE);
+            }
+            return;
+        } else if (vrRequest != VR_REQUEST_NONE) {
+            s32 button = Vr_ItemRequestButton();
+
+            if (button >= 0) {
+                this->heldItemButton = button;
+            }
+            Player_UseItem(play, this, vrRequest);
+            return;
+        }
+
         if (this->itemAction >= PLAYER_IA_FISHING_POLE) {
             bool hasOnDpad = false;
             if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
@@ -2553,6 +2597,10 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             item = Player_GetItemOnButton(play, i);
 
             if ((item < ITEM_NONE_FE) && (Player_ItemToItemAction(item) == this->heldItemAction)) {
+                sHeldItemButtonIsHeldDown = true;
+            }
+            // In VR, drawing the bow or holding the hookshot's trigger works like holding its button.
+            if (Vr_ItemButtonHeld(this)) {
                 sHeldItemButtonIsHeldDown = true;
             }
         } else if (GameInteractor_Should(VB_CHANGE_HELD_ITEM_AND_USE_ITEM, true, item)) {
@@ -2613,7 +2661,69 @@ void Player_StartChangingHeldItem(Player* this, PlayState* play) {
     this->stateFlags1 &= ~PLAYER_STATE1_START_CHANGING_HELD_ITEM;
 }
 
+void func_8084409C(PlayState* play, Player* this, f32 speedXZ, f32 velocityY);
+
+// In VR the boomerang leaves the hand the moment its grip lets go, as func_808359FC's throw does at the end of the
+// game's aiming.
+static void Player_ThrowBoomerangVr(PlayState* play, Player* this, Vec3f* from) {
+    EnBoom* boomerang = (EnBoom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOOM, from->x, from->y, from->z,
+                                             this->actor.focus.rot.x, this->actor.shape.rot.y, 0, 0);
+
+    if (boomerang == NULL) {
+        return;
+    }
+    this->boomerangActor = &boomerang->actor;
+    // A locked-on boomerang homes in as usual; otherwise it flies where the hand was heading.
+    if (this->focusActor == NULL) {
+        Vr_AimFromHand(this, &boomerang->actor, 0);
+    }
+    boomerang->moveTo = this->focusActor;
+    boomerang->returnTimer = 20;
+    this->stateFlags1 |= PLAYER_STATE1_BOOMERANG_THROWN;
+    this->unk_A73 = 4;
+    Player_PlaySfx(this, NA_SE_IT_BOOMERANG_THROW);
+    Player_PlayVoiceSfx(this, NA_SE_VO_LI_SWORD_N);
+}
+
+static void Player_CatchWithBottleVr(PlayState* play, Player* this, Actor* creature);
+
 void Player_UpdateItems(Player* this, PlayState* play) {
+    Vec3f boomerangFrom;
+    Actor* bottleCatch = Vr_TakeBottleCatch();
+
+    // In VR a bottle taken out with something in it is given its contents once it's in hand.
+    if ((sVrBottleContent != ITEM_NONE) && Player_HoldsBottleVr(this)) {
+        this->heldItemId = sVrBottleContent;
+        this->heldItemAction = this->itemAction = Player_ItemToItemAction(sVrBottleContent);
+        sVrBottleContent = ITEM_NONE;
+    } else if (Vr_IsWorldStereo() && Player_HoldsBottleVr(this) && (this->heldItemButton >= 1) &&
+               (this->heldItemButton < ARRAY_COUNT(gSaveContext.equips.buttonItems)) && (this->unk_6AD == 0) &&
+               !(this->stateFlags1 & (PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_IN_CUTSCENE))) {
+        // ...and stays what its slot holds. Emptying a bottle leaves Link holding what was in it (the game puts the
+        // bottle away instead, which VR doesn't), so a fairy let out could be let out again, and a Poe given to
+        // the bottle wouldn't show.
+        u8 content = gSaveContext.inventory.items[gSaveContext.equips.cButtonSlots[this->heldItemButton - 1]];
+
+        if ((content >= ITEM_BOTTLE) && (content <= ITEM_POE) && (content != this->heldItemId)) {
+            this->heldItemId = content;
+            this->heldItemAction = this->itemAction = Player_ItemToItemAction(content);
+        }
+    }
+    // ...and an empty one catches what it's swung through, if the game offers it to Link as catchable.
+    if ((bottleCatch != NULL) && (bottleCatch == this->interactRangeActor) &&
+        (this->heldItemAction == PLAYER_IA_BOTTLE) && Player_HoldsBottleVr(this)) {
+        Player_CatchWithBottleVr(play, this, bottleCatch);
+    }
+
+    // In VR, letting go of the grip throws whatever Link carries right away, as the game's throw would.
+    if (Vr_TakeThrowRequest() && (this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) && (this->heldActor != NULL)) {
+        func_8084409C(play, this, 0.0f, 0.0f);
+    }
+    if (Vr_TakeBoomerangThrow(&boomerangFrom) && (this->heldItemAction == PLAYER_IA_BOOMERANG) &&
+        !(this->stateFlags1 & PLAYER_STATE1_BOOMERANG_THROWN)) {
+        Player_ThrowBoomerangVr(play, this, &boomerangFrom);
+    }
+
     if ((this->actor.category == ACTORCAT_PLAYER) &&
         GameInteractor_Should(VB_ALLOW_QUICK_PUTAWAY, !(this->stateFlags1 & PLAYER_STATE1_START_CHANGING_HELD_ITEM)) &&
         ((this->heldItemAction == this->itemAction) || (this->stateFlags1 & PLAYER_STATE1_SHIELDING)) &&
@@ -2932,7 +3042,10 @@ int func_80834E7C(PlayState* play) {
 
 s32 func_80834EB8(Player* this, PlayState* play) {
     if ((this->unk_6AD == 0) || (this->unk_6AD == 2)) {
-        if (Player_IsZTargeting(this) || (Camera_CheckValidMode(Play_GetCamera(play, 0), 7) == 0)) {
+        // In VR the bow, slingshot, hookshot and boomerang are aimed by hand, so they stay ready in third person, as
+        // while Z-targeting, instead of going into first-person aiming, which stops Link where he stands.
+        if (Player_IsZTargeting(this) || (Camera_CheckValidMode(Play_GetCamera(play, 0), 7) == 0) ||
+            Vr_IsWorldStereo()) {
             return 1;
         }
         this->unk_6AD = 2;
@@ -2968,7 +3081,12 @@ s32 func_80834FBC(Player* this) {
 }
 
 s32 func_8083501C(Player* this, PlayState* play) {
-    if (this->unk_860 >= 0) {
+    // In VR the bow, slingshot and hookshot stay loaded, so nocking or a trigger pull aims at once instead of first
+    // playing the step that takes them out, which only goes on to aim if the button is still held when it ends (see
+    // func_808353D8).
+    if (Vr_IsWorldStereo()) {
+        this->unk_860 = ABS(this->unk_860);
+    } else if (this->unk_860 >= 0) {
         this->unk_860 = -this->unk_860;
     }
 
@@ -3013,6 +3131,7 @@ s32 func_808350A4(PlayState* play, Player* this) {
         }
 
         this->unk_A73 = 4;
+        Vr_AimProjectile(this, this->heldActor);
         this->heldActor->parent = NULL;
         this->actor.child = NULL;
         this->heldActor = NULL;
@@ -3047,6 +3166,11 @@ s32 func_808351D4(Player* this, PlayState* play) {
     } else if (this->unk_836 == 1) {
         this->unk_836 = 2;
     }
+    // In VR the bow, slingshot and hookshot are ready as soon as they're aimed, so letting go fires then, instead of
+    // once their readying animation has played out.
+    if (Vr_IsWorldStereo() && (this->unk_836 <= 0)) {
+        this->unk_836 = 1;
+    }
 
     if (this->unk_834 > 10) {
         this->unk_834--;
@@ -3066,7 +3190,10 @@ s32 func_808351D4(Player* this, PlayState* play) {
             }
         }
         this->unk_834 = 10;
-        Player_ZeroSpeedXZ(this);
+        // In VR shooting doesn't stop Link, so shots on the move don't jerk the view to a halt.
+        if (!Vr_IsWorldStereo()) {
+            Player_ZeroSpeedXZ(this);
+        }
     } else {
         this->stateFlags1 |= PLAYER_STATE1_READY_TO_FIRE;
     }
@@ -3105,7 +3232,9 @@ s32 func_808353D8(Player* this, PlayState* play) {
             return true;
         }
 
-        if (Player_HoldsHookshot(this)) {
+        // In VR the bow and slingshot can be nocked again straight away, instead of once Link has lowered them,
+        // which ignores a nock.
+        if (Player_HoldsHookshot(this) || Vr_IsWorldStereo()) {
             Player_SetUpperActionFunc(this, func_8083501C);
         } else {
             Player_SetUpperActionFunc(this, func_80835588);
@@ -3255,6 +3384,11 @@ s32 func_808359FC(Player* this, PlayState* play) {
                                  this->actor.focus.rot.x, yaw, 0, 0);
 
         this->boomerangActor = &boomerang->actor;
+
+        // A locked-on boomerang homes in as usual; otherwise it flies where the hand points.
+        if ((boomerang != NULL) && (this->focusActor == NULL)) {
+            Vr_AimFromHand(this, &boomerang->actor, 0);
+        }
 
         if (boomerang != NULL) {
             boomerang->moveTo = this->focusActor;
@@ -9625,6 +9759,7 @@ void func_8084409C(PlayState* play, Player* this, f32 speedXZ, f32 velocityY) {
         heldActor->world.rot.y = this->actor.shape.rot.y;
         heldActor->speedXZ = speedXZ;
         heldActor->velocity.y = velocityY;
+        Vr_ThrowWithHand(this, heldActor);
         func_80834644(play, this);
         Player_PlaySfx(this, NA_SE_PL_THROW);
         Player_PlayVoiceSfx(this, NA_SE_VO_LI_SWORD_N);
@@ -11945,6 +12080,8 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
             }
 
             Actor_UpdatePos(&this->actor);
+            // In VR the player's own steps move Link too, before collision so walls push him back.
+            Vr_ApplyRoomScale(this);
             Player_ProcessSceneCollision(play, this);
         } else {
             if (GameInteractor_Should(VB_SET_STATIC_FLOOR_TYPE, true, this)) {
@@ -12338,8 +12475,49 @@ static Gfx* sMaskDlists[PLAYER_MASK_MAX - 1] = {
 
 static Vec3s D_80854864 = { 0, 0, 0 };
 
+static OverrideLimbDrawOpa sVrBaseOverrideLimbDraw;
+static s32 sVrWorldMirrored; // the Mirrored World option already inverts culling for the whole world
+
+// Inverts the renderer's culling or puts it back, the same way the Mirrored World option does. Unlike swapping
+// segment 0x0C's culling list, it also covers models that set their own culling.
+static void Player_SetCullingInvertedVr(PlayState* play, s32 inverted) {
+    OPEN_DISPS(play->state.gfxCtx);
+    if (inverted) {
+        gSPSetExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+        gSPSetExtraGeometryMode(POLY_XLU_DISP++, G_EX_INVERT_CULLING);
+    } else {
+        gSPClearExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+        gSPClearExtraGeometryMode(POLY_XLU_DISP++, G_EX_INVERT_CULLING);
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// In VR the camera is inside Link's head, so only his hands are drawn, on the player's controllers. The rest of
+// the skeleton is still posed, since the sword and shield colliders are placed from it.
+static s32 Player_OverrideLimbDrawVr(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
+                                     void* thisx) {
+    s32 skip = sVrBaseOverrideLimbDraw(play, limbIndex, dList, pos, rot, thisx);
+
+    Vr_OverridePlayerLimb((Player*)thisx, limbIndex, dList, pos, rot);
+
+    // A mirrored hand's faces are turned inside out, so its culling is inverted, until the next limb sets it back.
+    Player_SetCullingInvertedVr(play, Vr_LimbMirrored((Player*)thisx, limbIndex) != sVrWorldMirrored);
+    return skip;
+}
+
 void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList, OverrideLimbDrawOpa overrideLimbDraw) {
     static s32 D_8085486C = 255;
+
+    // Other actors draw with this too, so only the real player gets VR hands.
+    // Aiming and crawling would swap in first-person arms or hide the hands, which in VR stay as they are.
+    if (Vr_IsWorldStereo() && (this == GET_PLAYER(play))) {
+        sVrBaseOverrideLimbDraw = ((overrideLimbDraw == Player_OverrideLimbDrawGameplayFirstPerson) ||
+                                   (overrideLimbDraw == Player_OverrideLimbDrawGameplayCrawling))
+                                      ? Player_OverrideLimbDrawGameplayDefault
+                                      : overrideLimbDraw;
+        overrideLimbDraw = Player_OverrideLimbDrawVr;
+        sVrWorldMirrored = (R_PAUSE_MENU_MODE <= 1) && CVarGetInteger(CVAR_ENHANCEMENT("MirroredWorld"), 0);
+    }
 
     OPEN_DISPS(play->state.gfxCtx);
 
@@ -12349,6 +12527,11 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
     Player_DrawImpl(play, this->skelAnime.skeleton, this->skelAnime.jointTable, this->skelAnime.dListCount, lod,
                     this->currentTunic, this->currentBoots, this->actor.shape.face, overrideLimbDraw,
                     Player_PostLimbDrawGameplay, this);
+
+    // A mirrored VR hand may have been the last limb to set the culling.
+    if (overrideLimbDraw == Player_OverrideLimbDrawVr) {
+        Player_SetCullingInvertedVr(play, sVrWorldMirrored);
+    }
 
     if ((overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault) && (this->currentMask != PLAYER_MASK_NONE)) {
         // Fixes a bug in vanilla where ice traps are rendered extremely large while wearing a bunny hood
@@ -12549,6 +12732,8 @@ void Player_Draw(Actor* thisx, PlayState* play2) {
     }
 
     CLOSE_DISPS(play->state.gfxCtx);
+
+    Vr_DrawPlayerExtras(play);
 }
 
 void Player_Destroy(Actor* thisx, PlayState* play) {
@@ -14230,9 +14415,12 @@ void Player_Action_8084E604(Player* this, PlayState* play) {
         func_8083A098(this, &gPlayerAnim_link_normal_light_bom_end, play);
     } else if (LinkAnimation_OnFrame(&this->skelAnime, 3.0f)) {
         Inventory_ChangeAmmo(ITEM_NUT, -1);
-        Actor_Spawn(&play->actorCtx, play, ACTOR_EN_ARROW, this->bodyPartsPos[PLAYER_BODYPART_R_HAND].x,
-                    this->bodyPartsPos[PLAYER_BODYPART_R_HAND].y, this->bodyPartsPos[PLAYER_BODYPART_R_HAND].z, 4000,
-                    this->actor.shape.rot.y, 0, ARROW_NUT);
+        Actor* nut = Actor_Spawn(&play->actorCtx, play, ACTOR_EN_ARROW, this->bodyPartsPos[PLAYER_BODYPART_R_HAND].x,
+                                 this->bodyPartsPos[PLAYER_BODYPART_R_HAND].y,
+                                 this->bodyPartsPos[PLAYER_BODYPART_R_HAND].z, 4000, this->actor.shape.rot.y, 0,
+                                 ARROW_NUT);
+        // In VR the nut stays in the hand until it's thrown.
+        Vr_HoldNut(this, nut);
         Player_PlayVoiceSfx(this, NA_SE_VO_LI_SWORD_N);
     }
 
@@ -14515,6 +14703,26 @@ void Player_Action_SwingBottle(Player* this, PlayState* play) {
     if (this->skelAnime.curFrame <= 7.0f) {
         this->stateFlags1 |= PLAYER_STATE1_SWINGING_BOTTLE;
     }
+}
+
+// In VR the bottle catches what the player's hand swings it through, as Player_Action_SwingBottle's active frames
+// do, without the swing animation, camera or text box.
+static void Player_CatchWithBottleVr(PlayState* play, Player* this, Actor* creature) {
+    BottleCatchInfo* catchInfo = &sBottleCatchInfo[0];
+    s32 i;
+
+    for (i = 0; i < ARRAY_COUNT(sBottleCatchInfo); i++, catchInfo++) {
+        if (creature->id == catchInfo->actorId) {
+            break;
+        }
+    }
+    if (!GameInteractor_Should(VB_BOTTLE_ACTOR, i < ARRAY_COUNT(sBottleCatchInfo), creature)) {
+        return;
+    }
+    creature->parent = &this->actor;
+    Player_UpdateBottleHeld(play, this, catchInfo->itemId, ABS(catchInfo->itemAction));
+    Audio_PlayFanfare(NA_BGM_ITEM_GET | 0x900);
+    GameInteractor_ExecuteOnPlayerBottleUpdate(catchInfo->itemId);
 }
 
 static Vec3f D_80854A1C = { 0.0f, 0.0f, 5.0f };

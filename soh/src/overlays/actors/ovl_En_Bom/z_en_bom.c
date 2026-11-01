@@ -9,6 +9,7 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipUtils.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
@@ -287,7 +288,13 @@ void EnBom_Update(Actor* thisx, PlayState* play2) {
 
             // spawn spark effect on even frames
             effPos = thisx->world.pos;
-            effPos.y += 17.0f;
+            if (Vr_UseVendorModels()) {
+                // The shop's bomb (see EnBom_Draw) is centered on its origin, plus its lift on the ground, and at
+                // its scale its fuse tip is about 4 units above its center.
+                effPos.y += ((thisx->parent == NULL) ? 5.0f : 0.0f) + 4.0f;
+            } else {
+                effPos.y += 17.0f;
+            }
             if ((play->gameplayFrames % 2) == 0) {
                 EffectSsGSpk_SpawnFuse(play, thisx, &effPos, &effVelocity, &effAccel);
             }
@@ -392,7 +399,18 @@ void EnBom_Draw(Actor* thisx, PlayState* play) {
 
     OPEN_DISPS(play->state.gfxCtx);
 
-    if (thisx->params == BOMB_BODY) {
+    if ((thisx->params == BOMB_BODY) && Vr_UseVendorModels()) {
+        // In VR the flat bomb that turns to face the camera looks like cardboard, so it's the shop's full model.
+        func_8002EBCC(thisx, play, 0);
+        // On the ground the bomb sits on its origin; in a hand it's centered on it.
+        f32 lift = (thisx->parent == NULL) ? 5.0f : 0.0f;
+        // Turned all the way with shape.rot, which follows the hand while it's carried (see Vr_PlaceHeldActor).
+        Matrix_SetTranslateRotateYXZ(thisx->world.pos.x, thisx->world.pos.y + lift, thisx->world.pos.z,
+                                     &thisx->shape.rot);
+        Matrix_Scale(0.13f, 0.13f, 0.13f, MTXMODE_APPLY);
+        GetItem_Draw(play, GID_BOMB);
+        Collider_UpdateSpheres(0, &this->explosionCollider);
+    } else if (thisx->params == BOMB_BODY) {
         Gfx_SetupDL_25Opa(play->state.gfxCtx);
         if (!CVarGetInteger(CVAR_ENHANCEMENT("DisableBombBillboarding"), 0)) {
             Matrix_ReplaceRotation(&play->billboardMtxF);

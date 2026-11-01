@@ -7,6 +7,7 @@
 #include "soh/frame_interpolation.h"
 #include "soh/OTRGlobals.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #define LIGHTS_BUFFER_SIZE 32
 //#define LIGHTS_BUFFER_SIZE 1024 // Kill me
@@ -391,6 +392,13 @@ void Lights_GlowCheck(PlayState* play) {
             pos.z = params->z;
             Actor_ProjectPos(play, &pos, &multDest, &wDest);
             params->drawGlow = false;
+            // In VR the depth buffer read below is the HUD's, not the eyes', so every glow showed through walls. A
+            // glow shows unless a wall stands between the eye and the light, stopping short of its torch.
+            if (Vr_IsWorldStereo()) {
+                params->drawGlow = !Vr_SightBlocked(play, &pos, 4000.0f, 15.0f);
+                node = node->next;
+                continue;
+            }
             wX = multDest.x * wDest;
             wY = multDest.y * wDest;
 

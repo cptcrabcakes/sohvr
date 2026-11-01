@@ -10,6 +10,7 @@
 #include "soh/Enhancements/enhancementTypes.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/OTRGlobals.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
@@ -1381,6 +1382,9 @@ void Play_Draw(PlayState* play) {
         Matrix_Transpose(&play->billboardMtxF);
         play->billboardMtx =
             Matrix_MtxFToMtx(MATRIX_CHECKFLOATS(&play->billboardMtxF), Graph_Alloc(gfxCtx, sizeof(Mtx)));
+        // In VR billboards face the eye from here on (see gVrBillboard). Not sooner: above, the same matrix still
+        // holds the camera's view while the view-projection matrix, which culling relies on, is built from it.
+        gVrBillboard = Vr_IsWorldStereo() ? &play->billboardMtxF : NULL;
 
         gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
 
@@ -1390,6 +1394,7 @@ void Play_Draw(PlayState* play) {
 
             gfxP = Graph_GfxPlusOne(sp1CC);
             gSPDisplayList(OVERLAY_DISP++, gfxP);
+            Vr_OnFadeDrawn(OVERLAY_DISP);
             gSPGrayscale(gfxP++, false);
 
             if ((play->transitionMode == TRANS_MODE_INSTANCE_RUNNING) ||
