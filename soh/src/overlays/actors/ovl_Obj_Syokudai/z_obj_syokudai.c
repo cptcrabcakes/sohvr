@@ -5,6 +5,7 @@
  */
 
 #include "z_obj_syokudai.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "overlays/actors/ovl_En_Arrow/z_en_arrow.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_syokudai/object_syokudai.h"
@@ -295,7 +296,8 @@ void ObjSyokudai_Draw(Actor* thisx, PlayState* play) {
         gDPSetEnvColor(POLY_XLU_DISP++, 255, 0, 0, 0);
 
         Matrix_Translate(0.0f, 52.0f, 0.0f, MTXMODE_APPLY);
-        Matrix_RotateY((s16)(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) - this->actor.shape.rot.y + 0x8000) *
+        // In VR the flame faces the eye from where it is, not the way the camera points.
+        Matrix_RotateY((s16)(Vr_CameraYawToward(play, &this->actor.world.pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) - this->actor.shape.rot.y + 0x8000) *
                            (M_PI / 0x8000),
                        MTXMODE_APPLY);
         Matrix_Scale(flameScale, flameScale, flameScale, MTXMODE_APPLY);

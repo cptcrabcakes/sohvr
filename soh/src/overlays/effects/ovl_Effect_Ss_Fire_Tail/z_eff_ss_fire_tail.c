@@ -5,7 +5,10 @@
  */
 
 #include "z_eff_ss_fire_tail.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+
+static Vec3f sZeroVec = { 0.0f, 0.0f, 0.0f };
 
 #define rScale regs[0]
 #define rLifespan regs[1]
@@ -69,6 +72,8 @@ void EffectSsFireTail_Draw(PlayState* play, u32 index, EffectSs* this) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     s32 pad;
     s16 yaw;
+    s16 camYaw;
+    Vec3f flamePos;
     Vec3f scale;
     f32 temp1;
     f32 temp2;
@@ -88,12 +93,12 @@ void EffectSsFireTail_Draw(PlayState* play, u32 index, EffectSs* this) {
         } else {
             Player* player = GET_PLAYER(play);
             s16 bodyPart = this->rBodyPart;
+            // In VR the flame sits toward the eye, not toward where the camera points from.
+            s16 bodyPartYaw = Vr_CameraYawToward(play, &player->bodyPartsPos[bodyPart], Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)));
 
-            this->pos.x =
-                player->bodyPartsPos[bodyPart].x - (Math_SinS(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) * 5.0f);
+            this->pos.x = player->bodyPartsPos[bodyPart].x - (Math_SinS(bodyPartYaw) * 5.0f);
             this->pos.y = player->bodyPartsPos[bodyPart].y;
-            this->pos.z =
-                player->bodyPartsPos[bodyPart].z - (Math_CosS(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) * 5.0f);
+            this->pos.z = player->bodyPartsPos[bodyPart].z - (Math_CosS(bodyPartYaw) * 5.0f);
 
             Matrix_Translate(this->pos.x, this->pos.y, this->pos.z, MTXMODE_NEW);
         }
@@ -101,11 +106,14 @@ void EffectSsFireTail_Draw(PlayState* play, u32 index, EffectSs* this) {
         Matrix_Translate(this->pos.x, this->pos.y, this->pos.z, MTXMODE_NEW);
     }
 
-    yaw = Math_Vec3f_Yaw(&scale, &this->vec) - Camera_GetCamDirYaw(GET_ACTIVE_CAM(play));
+    // In VR the flame faces the eye from where it is (where the matrix puts its origin), not the way the camera points.
+    Matrix_MultVec3f(&sZeroVec, &flamePos);
+    camYaw = Vr_CameraYawToward(play, &flamePos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)));
+    yaw = Math_Vec3f_Yaw(&scale, &this->vec) - camYaw;
     temp1 = fabsf(Math_CosS(yaw));
     temp2 = Math_SinS(yaw);
     dist = Math_Vec3f_DistXZ(&scale, &this->vec) / (this->rReg10 * 0.1f);
-    Matrix_RotateY((s16)(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) + 0x8000) * (M_PI / 0x8000), MTXMODE_APPLY);
+    Matrix_RotateY((s16)(camYaw + 0x8000) * (M_PI / 0x8000), MTXMODE_APPLY);
     Matrix_RotateZ(temp2 * this->rReg2 * dist * (M_PI / 180.0f), MTXMODE_APPLY);
     temp2 = 1.0f - ((f32)(this->life + 1) / this->rLifespan);
     temp2 = 1.0f - SQ(temp2);

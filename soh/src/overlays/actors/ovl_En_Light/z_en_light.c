@@ -5,6 +5,7 @@
  */
 
 #include "z_en_light.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/gameplay_dangeon_keep/gameplay_dangeon_keep.h"
 
@@ -77,8 +78,8 @@ void EnLight_Destroy(Actor* thisx, PlayState* play) {
 }
 
 void EnLight_UpdatePosRot(EnLight* this, PlayState* play) {
-    // update yaw for billboard effect
-    this->actor.shape.rot.y = Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) + 0x8000;
+    // update yaw for billboard effect; in VR toward the eye from where the flame is
+    this->actor.shape.rot.y = Vr_CameraYawToward(play, &this->actor.world.pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) + 0x8000;
 
     if (this->actor.parent != NULL) {
         Math_Vec3f_Copy(&this->actor.world.pos, &(this->actor.parent)->world.pos);
@@ -181,7 +182,7 @@ void EnLight_Draw(Actor* thisx, PlayState* play) {
         gDPSetEnvColor(POLY_XLU_DISP++, 255, 0, 0, 0);
     }
 
-    Matrix_RotateY((s16)((Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) - this->actor.shape.rot.y) + 0x8000) *
+    Matrix_RotateY((s16)((Vr_CameraYawToward(play, &this->actor.world.pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) - this->actor.shape.rot.y) + 0x8000) *
                        (M_PI / 32768.0f),
                    MTXMODE_APPLY);
 

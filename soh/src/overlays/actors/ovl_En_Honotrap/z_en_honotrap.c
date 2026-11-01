@@ -5,6 +5,7 @@
  */
 
 #include "z_en_honotrap.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/gameplay_dangeon_keep/gameplay_dangeon_keep.h"
 
@@ -519,7 +520,8 @@ void EnHonotrap_DrawFlame(Actor* thisx, PlayState* play) {
         Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 0, 0, 0x20, 0x40, 1, 0, this->flameScroll, 0x20, 0x80, 0, 0, 0, -20));
     gDPSetPrimColor(POLY_XLU_DISP++, 0x80, 0x80, 255, 200, 0, 255);
     gDPSetEnvColor(POLY_XLU_DISP++, 255, 0, 0, 0);
-    Matrix_RotateY((s16)(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) - this->actor.shape.rot.y + 0x8000) *
+    // In VR the flame faces the eye from where it is, not the way the camera points.
+    Matrix_RotateY((s16)(Vr_CameraYawToward(play, &this->actor.world.pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) - this->actor.shape.rot.y + 0x8000) *
                        (M_PI / 0x8000),
                    MTXMODE_APPLY);
     gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);

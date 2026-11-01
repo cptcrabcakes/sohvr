@@ -5,6 +5,7 @@
  */
 
 #include "z_eff_ss_en_fire.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 
 #define rScaleMax regs[0]
@@ -73,7 +74,8 @@ void EffectSsEnFire_Draw(PlayState* play, u32 index, EffectSs* this) {
     OPEN_DISPS(gfxCtx);
 
     Matrix_Translate(this->pos.x, this->pos.y, this->pos.z, MTXMODE_NEW);
-    camYaw = (Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) + 0x8000);
+    // In VR the flame faces the eye from where it is, not the way the camera points.
+    camYaw = (Vr_CameraYawToward(play, &this->pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) + 0x8000);
     Matrix_RotateY(camYaw * (M_PI / 0x8000), MTXMODE_APPLY);
 
     scale = Math_SinS(this->life * 0x333) * (this->rScale * 0.00005f);

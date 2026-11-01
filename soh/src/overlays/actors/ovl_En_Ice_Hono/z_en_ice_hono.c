@@ -5,6 +5,7 @@
  */
 
 #include "z_en_ice_hono.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 
 #define FLAGS 0
@@ -384,7 +385,8 @@ void EnIceHono_Draw(Actor* thisx, PlayState* play) {
 
     gDPSetEnvColor(POLY_XLU_DISP++, 0, 150, 255, 0);
 
-    Matrix_RotateY((s16)(Camera_GetCamDirYaw(GET_ACTIVE_CAM(play)) - this->actor.shape.rot.y + 0x8000) *
+    // In VR the flame faces the eye from where it is, not the way the camera points.
+    Matrix_RotateY((s16)(Vr_CameraYawToward(play, &this->actor.world.pos, Camera_GetCamDirYaw(GET_ACTIVE_CAM(play))) - this->actor.shape.rot.y + 0x8000) *
                        (M_PI / 0x8000),
                    MTXMODE_APPLY);
 
