@@ -2176,7 +2176,7 @@ extern "C" bool Vr_UseNewDrops(void) {
 }
 
 extern "C" bool Vr_DropNeedsGrab(s16 type) {
-    if (!Vr_IsWorldStereo() || !CVarGetInteger(CVAR_VR_GRAB_DROPS, 1)) {
+    if (!Vr_IsWorldStereo() || !CVarGetInteger(CVAR_VR_GRAB_DROPS, 0)) {
         return false;
     }
     switch (type) {

@@ -35,7 +35,7 @@ The other options on the VR page:
 | OpenXR Runtime | Auto uses SteamVR while it's running, and otherwise Windows' active OpenXR runtime. Turn VR off and on to apply a change. |
 | Your Height | Your real height. Link's height is mapped onto yours, so the world looks bigger when he's a child. |
 | Adult World Scale, Child World Scale | Scales the world further if people and doors look too small or too big. |
-| Pick Up Drops by Hand | On: you collect ammo and magic drops by closing a hand on them. Off: you walk into them. |
+| Pick Up Drops by Hand | Off (the default): you collect ammo and magic drops by walking into them, as in the game. On: you close a hand on them instead. |
 | Snap Turn | How far one flick of the right stick turns you; 0 turns smoothly. |
 | Sword Hand | Link is left-handed. Choose Right to put the sword in your right hand instead. |
 | Hand Fine Tuning | Small rotation adjustments for each hand model. Leave these at 0 unless the hands look misaligned. |
@@ -65,7 +65,7 @@ Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on
 | Attack | Swing the sword |
 | Block | Hold the shield where the attack is coming from |
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. |
-| Pick up a drop | Close a hand on it |
+| Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |

@@ -548,7 +548,7 @@ void SohMenu::AddMenuSettings() {
     AddWidget(path, "Pick Up Drops by Hand", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.GrabDrops"))
         .RaceDisable(false)
-        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
             "Ammo and magic drops are picked up by closing a hand on them. Off, they're collected by walking into "
             "them, as rupees and hearts are."));
     AddWidget(path, "Snap Turn: %d degrees", WIDGET_CVAR_SLIDER_INT)
