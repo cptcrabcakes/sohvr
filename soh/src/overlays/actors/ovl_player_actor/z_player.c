@@ -6328,8 +6328,11 @@ s32 Player_ActionHandler_Talk(Player* this, PlayState* play) {
                             this->stateFlags2 |= PLAYER_STATE2_NAVI_ALERT;
                         }
 
+                        // In VR C-up's first-person view is off, so Navi is talked to with L, as with Navi on L.
                         if (!CHECK_BTN_ALL(sControlInput->press.button,
-                                           CVarGetInteger(CVAR_ENHANCEMENT("NaviOnL"), 0) ? BTN_L : BTN_CUP) &&
+                                           (CVarGetInteger(CVAR_ENHANCEMENT("NaviOnL"), 0) || Vr_IsWorldStereo())
+                                               ? BTN_L
+                                               : BTN_CUP) &&
                             !forceTalkToNavi) {
                             return 0;
                         }

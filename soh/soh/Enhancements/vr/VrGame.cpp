@@ -518,15 +518,15 @@ void UpdateBoomerang() {
     }
 }
 
-// Blocks are taken hold of by hand. While the game offers to grab one (Link up against it and facing it), closing
-// both grips with both hands out in front at least the block reach (meters, from the head) holds A for it, as the
-// game wants held for as long as Link holds on. Moving the hands, or walking, toward the block past the push distance
+// Blocks (and Armos statues) are taken hold of by hand. With both grips closed and both hands out in front at least
+// the block reach (meters, from the head), A is held for one as soon as the game offers to grab it (Link up against
+// it and facing it), as the game wants A held for as long as Link holds on. The grips can close first and Link be
+// walked into it after, since its collision can be smaller than it looks. Moving the hands, or walking, toward the block past the push distance
 // from where they took hold pushes it, and back past it pulls it (see Vr_BlockPushDirection), until they come back.
 // Letting go of either grip lets go of the block.
-constexpr float kBlockReach = 0.25f;
+constexpr float kBlockReach = 0.15f;
 constexpr float kBlockPushDistance = 0.06f;
 bool sBlockHeld = false;
-bool sBothGripsLatched = false;
 float sBlockStart[2] = {};
 
 // Where Link faces, in the play space (only x and z are set).
@@ -540,8 +540,6 @@ void UpdateBlockGrip() {
     const ControllerState& right = runtime.GetController(HAND_RIGHT);
     Player* player = GET_PLAYER(gPlayState);
     bool gripping = left.gripHeld && right.gripHeld && left.gripPose.valid && right.gripPose.valid;
-    bool closed = gripping && !sBothGripsLatched;
-    sBothGripsLatched = left.gripHeld && right.gripHeld;
     bool offered = player->stateFlags2 & (PLAYER_STATE2_DO_ACTION_GRAB | PLAYER_STATE2_GRABBING_DYNAPOLY);
     if (sBlockHeld) {
         if (!gripping || !offered) {
@@ -550,7 +548,7 @@ void UpdateBlockGrip() {
         return;
     }
     const Pose& head = runtime.GetHead();
-    if (!closed || !(player->stateFlags2 & PLAYER_STATE2_DO_ACTION_GRAB) || !head.valid) {
+    if (!gripping || !(player->stateFlags2 & PLAYER_STATE2_DO_ACTION_GRAB) || !head.valid) {
         return;
     }
     Vec3 facing = FacingInPlay(player);

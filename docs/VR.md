@@ -51,7 +51,7 @@ Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on
 | Left stick | Walk, relative to where you're looking |
 | Walk around your room | Link walks too; walls stop you |
 | Right stick left/right | Turn |
-| Right stick down | L |
+| Right stick down | L; talks to Navi when she has something to say |
 | Right stick click | Recenter the view, or bring the floating screen back |
 | Left stick click or Menu button | Pause |
 | A | Talk, open, climb, roll; while carrying something, put it down or throw it |
@@ -67,7 +67,7 @@ Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
-| Push or pull a block | Stand against it facing it, put both hands out on it and squeeze both grips. Move your hands or walk toward it to push, and back to pull; bring them back to stop. Let go to let go of it. A and the stick work too. |
+| Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips; Link takes hold once he's up against it, so you can squeeze first and walk in. Move your hands or walk toward it to push, and back to pull; bring them back to stop. Let go to let go of it. A and the stick work too. |
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
 | Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go |
