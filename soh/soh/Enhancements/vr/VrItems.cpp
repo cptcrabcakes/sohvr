@@ -5,6 +5,9 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/randomizer/draw.h"
+#include "soh/ResourceManagerHelpers.h"
+
+#include <fast/resource/type/DisplayList.h>
 
 #include <spdlog/spdlog.h>
 
@@ -13,6 +16,7 @@
 
 extern "C" {
 #include "global.h"
+#include "objects/object_gi_boots_2/object_gi_boots_2.h"
 #include "objects/object_gi_clothes/object_gi_clothes.h"
 #include "soh/Enhancements/vr/Vr.h"
 extern PlayState* gPlayState;
@@ -37,6 +41,7 @@ constexpr float kModelScaleUnitsPerMeter = 40.0f;
 constexpr float kHoverGrow = 1.5f;
 constexpr s16 kMasterSwordModel = -1; // has no item-get model; the randomizer's drawing is used
 constexpr s16 kKokiriTunicModel = -2; // has none either; the other tunics' model is drawn in green
+constexpr s16 kKokiriBootsModel = -3; // has none either; the Iron Boots' model is drawn as leather
 // On the floating screen the ring sits in the middle of the picture, sized in meters on the screen: its radius,
 // each item's size, and how close to an item a controller has to point (the middle, which goes back, is smaller).
 constexpr float kScreenRingRadius = 0.35f;
@@ -142,13 +147,13 @@ s16 ItemModel(u8 item) {
 }
 
 // Each piece of gear's model. The Kokiri Tunic and Boots have none: the tunic is the other tunics' model in green,
-// and the Iron Boots stand in for the boots, always first in their ring.
+// and the boots are the Iron Boots' model in leather.
 s16 EquipModel(u8 type, u8 value) {
     static const s16 kModels[4][3] = {
         { GID_SWORD_KOKIRI, kMasterSwordModel, GID_SWORD_BGS },
         { GID_SHIELD_DEKU, GID_SHIELD_HYLIAN, GID_SHIELD_MIRROR },
         { kKokiriTunicModel, GID_TUNIC_GORON, GID_TUNIC_ZORA },
-        { GID_BOOTS_IRON, GID_BOOTS_IRON, GID_BOOTS_HOVER },
+        { kKokiriBootsModel, GID_BOOTS_IRON, GID_BOOTS_HOVER },
     };
     return kModels[type][value - 1];
 }
@@ -669,11 +674,46 @@ void DrawKokiriTunic(PlayState* play) {
     gSPDisplayList(opa++, (Gfx*)gGiTunicDL);
 }
 
+// The Iron Boots' item-get model as plain leather boots: its display list sets the color of its iron (blue-grey)
+// and of its leather (browns) itself, so a copy has the iron's color changed to its dark leather's, and its rivets,
+// a display list of their own, are left out. The copy is made from the game's data the first time it's drawn.
+constexpr u32 kIronBootsIronPrim = 0x8CAAAAFF;
+constexpr u32 kIronBootsIronEnv = 0x141E1EFF;
+constexpr u32 kIronBootsDarkLeatherPrim = 0x502800FF;
+constexpr u32 kIronBootsDarkLeatherEnv = 0x281400FF;
+std::vector<Gfx> sKokiriBootsDL;
+
+void DrawKokiriBoots(PlayState* play) {
+    if (sKokiriBootsDL.empty()) {
+        auto boots = std::static_pointer_cast<Fast::DisplayList>(ResourceMgr_GetResourceByNameHandlingMQ(gGiIronBootsDL));
+        if (boots == nullptr) {
+            return;
+        }
+        sKokiriBootsDL = boots->Instructions;
+        for (Gfx& command : sKokiriBootsDL) {
+            u32 opcode = static_cast<u32>(command.words.w0 >> 24) & 0xFF;
+            u32 color = static_cast<u32>(command.words.w1);
+            if (opcode == G_SETPRIMCOLOR && color == kIronBootsIronPrim) {
+                command.words.w1 = kIronBootsDarkLeatherPrim;
+            } else if (opcode == G_SETENVCOLOR && color == kIronBootsIronEnv) {
+                command.words.w1 = kIronBootsDarkLeatherEnv;
+            }
+        }
+    }
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx_SetupDL_25Opa(gfxCtx);
+    Gfx*& opa = gfxCtx->polyOpa.p;
+    gSPMatrix(opa++, MATRIX_NEWMTX(gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    gSPDisplayList(opa++, sKokiriBootsDL.data());
+}
+
 void DrawModel(PlayState* play, s16 model) {
     if (model == kMasterSwordModel) {
         Randomizer_DrawMasterSword(play, nullptr);
     } else if (model == kKokiriTunicModel) {
         DrawKokiriTunic(play);
+    } else if (model == kKokiriBootsModel) {
+        DrawKokiriBoots(play);
     } else {
         GetItem_Draw(play, model);
     }
