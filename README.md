@@ -8,7 +8,9 @@ HAS ONLY BEEN TESTED WITH A QUEST 3 ON STEAM AIR LINK
 
 How to build it, turn VR on and change its settings is in **[docs/VR.md](docs/VR.md)**.
 
-## The item wheel: press Y
+## Tries to turn OOT into a AAA VR Game. Revamped UI, and items are now fully 6DoF interactable.
+
+The item wheel: press Y
 
 Your items, gear, the pause menu and the VR settings are all on the item wheel. There are no item buttons.
 
