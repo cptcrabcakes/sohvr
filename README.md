@@ -1,12 +1,7 @@
-![Ship of Harkinian](docs/shiptitle.darkmode.png#gh-dark-mode-only)
-![Ship of Harkinian](docs/shiptitle.lightmode.png#gh-light-mode-only)
-
 > **This is an unofficial VR fork of Ship of Harkinian.** It adds an experimental six-degrees-of-freedom VR mode for PC headsets. See **[docs/VR.md](docs/VR.md)** for how to build it, turn VR on and play. It isn't made or supported by HarbourMasters. Like Ship of Harkinian, it contains no game assets, so you need your own copy of the game. The rest of this README is Ship of Harkinian's own.
 
 * [Website](https://www.shipofharkinian.com)
 * [Discord](https://discord.com/invite/harbourmasters)
-
-If you're having any trouble after reading through this `README`, feel free to ask for help in the Support text channels. Please keep in mind that we do not condone piracy.
 
 # Quick Start
 
