@@ -37,6 +37,41 @@ Congratulations, you are now sailing with the Ship of Harkinian! Have fun!
 
 # Configuration
 
+### VR 
+
+| Control | What it does |
+| - | - |
+| Left stick | Walk, relative to where you're looking |
+| Walk around your room | Link walks too; walls stop you |
+| Right stick left/right | Turn |
+| Right stick down | L |
+| Right stick click | Recenter the view, or bring the floating screen back |
+| Left stick click or Menu button | Pause |
+| A | Talk, open, climb, roll; while carrying something, put it down or throw it |
+| B | Advance text, and put the ocarina away |
+| Y | Open or close the item menu |
+| Left trigger | Z-target |
+
+| To | Do this |
+| - | - |
+| Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
+| Attack | Swing the sword |
+| Block | Hold the shield where the attack is coming from |
+| Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. |
+| Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
+| Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
+| Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
+| Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
+| Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go |
+| Fire the hookshot | Point, pull the trigger to aim, let go to fire |
+| Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
+| Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
+| Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
+| Play the ocarina | A, X, Y and the right stick up and down are its notes |
+
+The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
+
+
 ### Default keyboard configuration
 | N64 | A | B | Z | Start | Analog stick | C buttons | D-Pad |
 | - | - | - | - | - | - | - | - |
