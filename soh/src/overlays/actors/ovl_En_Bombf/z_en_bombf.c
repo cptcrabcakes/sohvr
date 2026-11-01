@@ -9,6 +9,9 @@
 #include "overlays/effects/ovl_Effect_Ss_Dead_Sound/z_eff_ss_dead_sound.h"
 #include "soh/Enhancements/vr/Vr.h"
 
+// The shop's bomb, which stands in for this one in VR (see EnBombf_Draw), at about the flower bomb's size.
+static const f32 sVrBombScale = 0.37f;
+
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
 void EnBombf_Init(Actor* thisx, PlayState* play);
@@ -378,10 +381,11 @@ void EnBombf_Update(Actor* thisx, PlayState* play) {
         if (this->isFuseEnabled != 0) {
             dustAccel.y = 0.2f;
             effPos = thisx->world.pos;
-            // In VR the shop's bomb stands in (see EnBombf_Draw), and its fuse tip is 11 units above its center:
-            // 22 up on the ground, 11 in a hand.
             if (Vr_UseVendorModels()) {
-                effPos.y += (thisx->parent != NULL) ? 11.0f : 22.0f;
+                // On the shop's bomb's fuse (see EnBombf_Draw), however the bomb is turned.
+                Vec3f origin;
+
+                Vr_PlaceBombModel(thisx, sVrBombScale, &origin, &effPos);
             } else {
                 effPos.y += 25.0f;
             }
@@ -499,12 +503,22 @@ void EnBombf_Draw(Actor* thisx, PlayState* play) {
         }
 
         if (Vr_UseVendorModels()) {
-            // In VR the bomb is the shop's 3D bomb, as plain bombs are (see EnBom_Draw), at the flower's size: about
-            // 22 units across at the actor's 0.01, sitting on its origin, or centered on it in a hand.
-            f32 lift = ((thisx->params == BOMBFLOWER_BODY) && (thisx->parent != NULL)) ? 0.0f : 1100.0f;
+            // In VR the bomb is the shop's 3D bomb, as plain bombs are (see EnBom_Draw), at the flower bomb's size.
+            if (thisx->params != BOMBFLOWER_BODY) {
+                // On the plant it rests on the ground among the leaves, as the plant's own bomb does: its bottom is
+                // 30 below its origin, so its origin goes 110 above the middle of the plant's own bomb.
+                Matrix_Translate(0.0f, 110.0f, 0.0f, MTXMODE_APPLY);
+                Matrix_Scale(sVrBombScale * 100.0f, sVrBombScale * 100.0f, sVrBombScale * 100.0f, MTXMODE_APPLY);
+            } else {
+                // Picked, it's drawn where the bomb is, without the 10-unit lift the game gives its own bomb
+                // (shape.yOffset), which left it hovering off the ground and above the hand.
+                Vec3f origin;
+                Vec3f fuseTip;
 
-            Matrix_Translate(0.0f, lift, 0.0f, MTXMODE_APPLY);
-            Matrix_Scale(37.0f, 37.0f, 37.0f, MTXMODE_APPLY);
+                Vr_PlaceBombModel(thisx, sVrBombScale, &origin, &fuseTip);
+                Matrix_SetTranslateRotateYXZ(origin.x, origin.y, origin.z, &thisx->shape.rot);
+                Matrix_Scale(sVrBombScale, sVrBombScale, sVrBombScale, MTXMODE_APPLY);
+            }
             GetItem_Draw(play, GID_BOMB);
         } else {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 200, 255, 200, 255);

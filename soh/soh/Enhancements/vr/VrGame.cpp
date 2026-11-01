@@ -351,14 +351,14 @@ void ShiftCenter(float dx, float dz) {
 }
 
 // Whether the player's steps can move Link: not while the game decides where he is, such as when he's climbing,
-// hanging, riding, crawling, talking or in a cutscene.
+// hanging, riding, crawling, holding a block, talking or in a cutscene.
 bool StepsMoveLink(Player* player) {
     constexpr u32 kHeldInPlace = PLAYER_STATE1_HOOKSHOT_FALLING | PLAYER_STATE1_TALKING | PLAYER_STATE1_GETTING_ITEM |
                                  PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE |
                                  PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_ITEM_CS |
                                  PLAYER_STATE1_IN_CUTSCENE;
-    return !(player->stateFlags1 & kHeldInPlace) && !(player->stateFlags2 & PLAYER_STATE2_CRAWLING) &&
-           player->csAction == 0;
+    return !(player->stateFlags1 & kHeldInPlace) &&
+           !(player->stateFlags2 & (PLAYER_STATE2_CRAWLING | PLAYER_STATE2_GRABBING_DYNAPOLY)) && player->csAction == 0;
 }
 
 // Past the drift distance from Link, the play space follows the player's steps instead, so the view never strays
@@ -518,6 +518,57 @@ void UpdateBoomerang() {
     }
 }
 
+// Blocks are taken hold of by hand. While the game offers to grab one (Link up against it and facing it), closing
+// both grips with both hands out in front at least the block reach (meters, from the head) holds A for it, as the
+// game wants held for as long as Link holds on. Moving the hands, or walking, toward the block past the push distance
+// from where they took hold pushes it, and back past it pulls it (see Vr_BlockPushDirection), until they come back.
+// Letting go of either grip lets go of the block.
+constexpr float kBlockReach = 0.25f;
+constexpr float kBlockPushDistance = 0.06f;
+bool sBlockHeld = false;
+bool sBothGripsLatched = false;
+float sBlockStart[2] = {};
+
+// Where Link faces, in the play space (only x and z are set).
+Vec3 FacingInPlay(Player* player) {
+    return RotateYaw(-sYaw, { Math_SinS(player->actor.shape.rot.y), 0.0f, Math_CosS(player->actor.shape.rot.y) });
+}
+
+void UpdateBlockGrip() {
+    const Runtime& runtime = Runtime::Get();
+    const ControllerState& left = runtime.GetController(HAND_LEFT);
+    const ControllerState& right = runtime.GetController(HAND_RIGHT);
+    Player* player = GET_PLAYER(gPlayState);
+    bool gripping = left.gripHeld && right.gripHeld && left.gripPose.valid && right.gripPose.valid;
+    bool closed = gripping && !sBothGripsLatched;
+    sBothGripsLatched = left.gripHeld && right.gripHeld;
+    bool offered = player->stateFlags2 & (PLAYER_STATE2_DO_ACTION_GRAB | PLAYER_STATE2_GRABBING_DYNAPOLY);
+    if (sBlockHeld) {
+        if (!gripping || !offered) {
+            sBlockHeld = false;
+        }
+        return;
+    }
+    const Pose& head = runtime.GetHead();
+    if (!closed || !(player->stateFlags2 & PLAYER_STATE2_DO_ACTION_GRAB) || !head.valid) {
+        return;
+    }
+    Vec3 facing = FacingInPlay(player);
+    auto reach = [&](const ControllerState& hand) {
+        return (hand.gripPose.position[0] - head.position[0]) * facing.x +
+               (hand.gripPose.position[2] - head.position[2]) * facing.z;
+    };
+    if (reach(left) < kBlockReach || reach(right) < kBlockReach) {
+        return;
+    }
+    sBlockHeld = true;
+    sBlockStart[0] = (left.gripPose.position[0] + right.gripPose.position[0]) * 0.5f;
+    sBlockStart[1] = (left.gripPose.position[2] + right.gripPose.position[2]) * 0.5f;
+    Runtime::Get().Vibrate(HAND_LEFT, 0.4f, 0.05f);
+    Runtime::Get().Vibrate(HAND_RIGHT, 0.4f, 0.05f);
+    SPDLOG_INFO("[VR] Took hold of a block with both hands");
+}
+
 bool sMenuInputsHeld = false;
 
 u16 CurrentButtons() {
@@ -575,6 +626,7 @@ u16 CurrentButtons() {
         buttons |= left.secondary ? BTN_CRIGHT : 0;
     }
     buttons |= (left.triggerHeld && !triggerTaken[HAND_LEFT]) ? BTN_Z : 0;
+    buttons |= sBlockHeld ? BTN_A : 0;
     // Fishing, the trigger of the hand without the rod reels in, as A does.
     if (GET_PLAYER(gPlayState)->heldItemAction == PLAYER_IA_FISHING_POLE &&
         Runtime::Get().GetController(ControllerFor(LINK_RIGHT)).triggerHeld) {
@@ -1831,6 +1883,7 @@ void Game_OnFrame() {
     UpdateBoomerang();
     UpdateWorldGrabs();
     UpdateLiftGrab();
+    UpdateBlockGrip();
     UpdateMasks();
     UpdateBottle();
     UpdateFishing();
@@ -2097,6 +2150,29 @@ extern "C" void Vr_PutWorldMatrix(MtxF* matrix) {
     Matrix_Mult(matrix, MTXMODE_APPLY);
 }
 
+// The shop's bomb, measured from its vertices (model units): a round body of radius 25 whose middle is 5 below the
+// model's origin, and a fuse whose tip is 30 above it.
+constexpr float kBombBodyRadius = 25.0f;
+constexpr float kBombBodyMiddle = -5.0f;
+constexpr float kBombFuseTip = 30.0f;
+
+extern "C" void Vr_PlaceBombModel(Actor* actor, f32 scale, Vec3f* origin, Vec3f* fuseTip) {
+    MtxF turn;
+    SkinMatrix_SetTranslateRotateYXZScale(&turn, 1.0f, 1.0f, 1.0f, actor->shape.rot.x, actor->shape.rot.y,
+                                          actor->shape.rot.z, 0.0f, 0.0f, 0.0f);
+    Vec3f up = { 0.0f, 1.0f, 0.0f };
+    Vec3f axis;
+    SkinMatrix_Vec3fMtxFMultXYZ(&turn, &up, &axis);
+    *origin = actor->world.pos;
+    if (actor->parent == nullptr) {
+        // The body's lowest point on the ground, wherever its middle is turned to.
+        origin->y += (kBombBodyRadius - kBombBodyMiddle * axis.y) * scale;
+    }
+    fuseTip->x = origin->x + axis.x * kBombFuseTip * scale;
+    fuseTip->y = origin->y + axis.y * kBombFuseTip * scale;
+    fuseTip->z = origin->z + axis.z * kBombFuseTip * scale;
+}
+
 extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
     if (!Vr_IsWorldStereo()) {
         if (SohVr::ScreenGameplay()) {
@@ -2258,8 +2334,9 @@ extern "C" void Vr_ApplyRoomScale(Player* player) {
     // has stopped him (linearVelocity), and turning him then sent the rest of a slide backward forward instead.
     const float* stick = SohVr::Runtime::Get().GetController(SohVr::HAND_LEFT).stick;
     bool stickIdle = stick[0] * stick[0] + stick[1] * stick[1] < SohVr::kStickDeadzone * SohVr::kStickDeadzone;
+    // Nor while the game holds his facing, as it does while he holds a block.
     if (stickIdle && player->linearVelocity == 0.0f && player->actor.speedXZ == 0.0f &&
-        player->focusActor == nullptr &&
+        player->focusActor == nullptr && !(player->stateFlags2 & PLAYER_STATE2_DISABLE_ROTATION_ALWAYS) &&
         player->meleeWeaponState == 0 && SohVr::CurrentTool() == SohVr::HeldTool::None) {
         SohVr::Vec3 forward = SohVr::RotateYaw(SohVr::sYaw, SohVr::HeadForward());
         if (forward.x * forward.x + forward.z * forward.z > 0.1f) {
@@ -2267,6 +2344,20 @@ extern "C" void Vr_ApplyRoomScale(Player* player) {
             player->actor.shape.rot.y = player->actor.world.rot.y = player->yaw = yaw;
         }
     }
+}
+
+extern "C" bool Vr_BlockPushDirection(Player* player, s32* direction) {
+    if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState) || !SohVr::sBlockHeld) {
+        return false;
+    }
+    const SohVr::Runtime& runtime = SohVr::Runtime::Get();
+    const float* left = runtime.GetController(SohVr::HAND_LEFT).gripPose.position;
+    const float* right = runtime.GetController(SohVr::HAND_RIGHT).gripPose.position;
+    SohVr::Vec3 facing = SohVr::FacingInPlay(player);
+    float moved = ((left[0] + right[0]) * 0.5f - SohVr::sBlockStart[0]) * facing.x +
+                  ((left[2] + right[2]) * 0.5f - SohVr::sBlockStart[1]) * facing.z;
+    *direction = (moved > SohVr::kBlockPushDistance) ? 1 : (moved < -SohVr::kBlockPushDistance) ? -1 : 0;
+    return true;
 }
 
 extern "C" bool Vr_LimbMirrored(Player* player, s32 limbIndex) {

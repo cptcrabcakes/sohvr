@@ -13,6 +13,13 @@ bool Vr_IsWorldStereo(void);
 // Makes a matrix already placed in the world, such as one on a controller, the current matrix. The frames drawn
 // between game ticks then blend it as it is, instead of relative to the actor drawing it.
 void Vr_PutWorldMatrix(MtxF* matrix);
+// The shop's bomb model, which VR draws for bombs and bomb flowers, at a scale (world units per model unit): where
+// its origin goes, centered on the actor while it's held and otherwise resting on the ground, turned as the actor's
+// shape.rot turns it (Matrix_SetTranslateRotateYXZ), and where its fuse tip then is.
+void Vr_PlaceBombModel(Actor* actor, f32 scale, Vec3f* origin, Vec3f* fuseTip);
+// While Link holds a block by hand, whether the hands push it (1), pull it (-1) or hold it still (0). False when he
+// doesn't hold one by hand, so the stick decides as usual.
+bool Vr_BlockPushDirection(Player* player, s32* direction);
 
 // Moves Link by however far the player has stepped in the real world since the last tick, and keeps the view on
 // him. Called from the player's update after it moves him and before collision, which pushes him back out of walls.

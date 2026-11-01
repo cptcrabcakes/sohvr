@@ -67,6 +67,7 @@ Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
+| Push or pull a block | Stand against it facing it, put both hands out on it and squeeze both grips. Move your hands or walk toward it to push, and back to pull; bring them back to stop. Let go to let go of it. A and the stick work too. |
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
 | Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go |
@@ -86,7 +87,7 @@ This is a work in progress, and several parts of the game still use its original
 * The pause menu is the original one on the floating screen, navigated with the stick.
 * The Lens of Truth's view is drawn into each eye as the game draws it, which may look odd.
 * The ocarina is played with buttons, not held to your mouth.
-* Ladders, ledges and blocks are climbed and pushed with the stick and A, not by hand.
+* Ladders and ledges are climbed with the stick and A, not by hand.
 * Some interactions haven't been tried everywhere in the game, so expect rough edges.
 
 The VR code is in [soh/soh/Enhancements/vr](../soh/soh/Enhancements/vr). Where the game's own code was changed, it calls into the VR code through functions named `Vr_...`.

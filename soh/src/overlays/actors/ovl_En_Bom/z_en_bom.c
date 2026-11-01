@@ -12,6 +12,9 @@
 #include "soh/Enhancements/vr/Vr.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
+// The shop's bomb, which stands in for this one in VR (see EnBom_Draw), at about the game's own bomb's size.
+static const f32 sVrBombScale = 0.13f;
+
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
 void EnBom_Init(Actor* thisx, PlayState* play);
@@ -289,9 +292,10 @@ void EnBom_Update(Actor* thisx, PlayState* play2) {
             // spawn spark effect on even frames
             effPos = thisx->world.pos;
             if (Vr_UseVendorModels()) {
-                // The shop's bomb (see EnBom_Draw) is centered on its origin, plus its lift on the ground, and at
-                // its scale its fuse tip is about 4 units above its center.
-                effPos.y += ((thisx->parent == NULL) ? 5.0f : 0.0f) + 4.0f;
+                // On the shop's bomb's fuse (see EnBom_Draw), however the bomb is turned.
+                Vec3f origin;
+
+                Vr_PlaceBombModel(thisx, sVrBombScale, &origin, &effPos);
             } else {
                 effPos.y += 17.0f;
             }
@@ -402,12 +406,14 @@ void EnBom_Draw(Actor* thisx, PlayState* play) {
     if ((thisx->params == BOMB_BODY) && Vr_UseVendorModels()) {
         // In VR the flat bomb that turns to face the camera looks like cardboard, so it's the shop's full model.
         func_8002EBCC(thisx, play, 0);
-        // On the ground the bomb sits on its origin; in a hand it's centered on it.
-        f32 lift = (thisx->parent == NULL) ? 5.0f : 0.0f;
-        // Turned all the way with shape.rot, which follows the hand while it's carried (see Vr_PlaceHeldActor).
-        Matrix_SetTranslateRotateYXZ(thisx->world.pos.x, thisx->world.pos.y + lift, thisx->world.pos.z,
-                                     &thisx->shape.rot);
-        Matrix_Scale(0.13f, 0.13f, 0.13f, MTXMODE_APPLY);
+        // On the ground it rests on its origin; in a hand it's centered on it. It's turned all the way with
+        // shape.rot, which follows the hand while it's carried (see Vr_PlaceHeldActor).
+        Vec3f origin;
+        Vec3f fuseTip;
+
+        Vr_PlaceBombModel(thisx, sVrBombScale, &origin, &fuseTip);
+        Matrix_SetTranslateRotateYXZ(origin.x, origin.y, origin.z, &thisx->shape.rot);
+        Matrix_Scale(sVrBombScale, sVrBombScale, sVrBombScale, MTXMODE_APPLY);
         GetItem_Draw(play, GID_BOMB);
         Collider_UpdateSpheres(0, &this->explosionCollider);
     } else if (thisx->params == BOMB_BODY) {
