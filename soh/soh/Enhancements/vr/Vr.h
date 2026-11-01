@@ -10,6 +10,9 @@ extern "C" {
 
 // True while the world is rendered in stereo around the player (gameplay, not a menu on the virtual screen).
 bool Vr_IsWorldStereo(void);
+// Whether the world is shown from the game's camera rather than through Link's eyes, as on the title screen, so
+// Link is drawn whole instead of as the player's hands.
+bool Vr_ViewFromCamera(void);
 // Makes a matrix already placed in the world, such as one on a controller, the current matrix. The frames drawn
 // between game ticks then blend it as it is, instead of relative to the actor drawing it.
 void Vr_PutWorldMatrix(MtxF* matrix);
@@ -17,9 +20,11 @@ void Vr_PutWorldMatrix(MtxF* matrix);
 // its origin goes, centered on the actor while it's held and otherwise resting on the ground, turned as the actor's
 // shape.rot turns it (Matrix_SetTranslateRotateYXZ), and where its fuse tip then is.
 void Vr_PlaceBombModel(Actor* actor, f32 scale, Vec3f* origin, Vec3f* fuseTip);
-// While Link holds a block by hand, whether the hands push it (1), pull it (-1) or hold it still (0). False when he
-// doesn't hold one by hand, so the stick decides as usual.
-bool Vr_BlockPushDirection(Player* player, s32* direction);
+// Draws the bomb flower's bomb at the current matrix: the shop's bomb model in the flower bomb's colors, with a ring of
+// petals around its cap.
+void Vr_DrawBombFlowerBomb(PlayState* play);
+// Where the item Link holds up after getting it is shown in VR, and its scale; false outside VR.
+bool Vr_GetItemPlace(Player* player, Vec3f* pos, f32* scale);
 
 // Moves Link by however far the player has stepped in the real world since the last tick, and keeps the view on
 // him. Called from the player's update after it moves him and before collision, which pushes him back out of walls.

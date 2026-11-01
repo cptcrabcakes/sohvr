@@ -52,6 +52,11 @@ static const std::map<int32_t, const char*> vrRuntimeMap = {
     { 2, "SteamVR" },
 };
 
+static const std::map<int32_t, const char*> vrMovementMap = {
+    { 0, "Where you look" },
+    { 1, "Where your left hand points" },
+};
+
 static const std::map<int32_t, const char*> vrSwordHandMap = {
     { 0, "Left (like Link)" },
     { 1, "Right (hands swapped)" },
@@ -515,6 +520,12 @@ void SohMenu::AddMenuSettings() {
                      .DefaultIndex(0)
                      .Tooltip("Auto uses SteamVR while it's running, and otherwise the runtime Windows has set as "
                               "active. This only affects this game. Turn VR off and on to apply a change."));
+    AddWidget(path, "Seated Mode", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.Seated"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().Tooltip("Lifts your view to a standing Link's eye height while you sit. It's "
+                                           "measured when this is turned on and each time you recenter (right "
+                                           "stick click), so sit as you'll play and recenter."));
     AddWidget(path, "Your Height: %d cm", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_SETTING("VR.PlayerHeight"))
         .RaceDisable(false)
@@ -561,6 +572,13 @@ void SohMenu::AddMenuSettings() {
                      .ShowButtons(true)
                      .Format("")
                      .Tooltip("How far one flick of the right stick turns you. 0 turns smoothly instead."));
+    AddWidget(path, "Movement Direction", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("VR.HandMovement"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .ComboMap(vrMovementMap)
+                     .DefaultIndex(0)
+                     .Tooltip("Which way pushing the left stick forward moves you."));
     AddWidget(path, "Sword Hand", WIDGET_CVAR_COMBOBOX)
         .CVar(CVAR_SETTING("VR.SwordInRightHand"))
         .RaceDisable(false)

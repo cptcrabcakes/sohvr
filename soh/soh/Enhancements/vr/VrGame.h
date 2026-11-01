@@ -46,5 +46,12 @@ void Game_RequestItem(int request);
 // item belongs in his other one. slot is a bottle's inventory slot, or -1. A mask goes into the hand, to be put on
 // by bringing it to the face.
 void Game_TakeItem(uint8_t item, Hand hand, int8_t slot);
+// Recenters the view on the next frame, measuring the seated height again in seated mode.
+void Game_Recenter();
+// Presses Start for the game's next update, opening the pause menu.
+void Game_PressStart();
+// A pose standing upright in front of where the player looks, the distance ahead and the drop below eye level
+// (meters), facing back at them.
+Pose Game_PanelInFront(float distance, float drop);
 
 } // namespace SohVr

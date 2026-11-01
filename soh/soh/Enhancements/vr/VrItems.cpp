@@ -16,8 +16,10 @@
 
 extern "C" {
 #include "global.h"
+#include "objects/object_gi_bomb_1/object_gi_bomb_1.h"
 #include "objects/object_gi_boots_2/object_gi_boots_2.h"
 #include "objects/object_gi_clothes/object_gi_clothes.h"
+#include "objects/object_haka_objects/object_haka_objects.h"
 #include "soh/Enhancements/vr/Vr.h"
 extern PlayState* gPlayState;
 extern u8 gEquipAgeReqs[][4];
@@ -42,6 +44,7 @@ constexpr float kHoverGrow = 1.5f;
 constexpr s16 kMasterSwordModel = -1; // has no item-get model; the randomizer's drawing is used
 constexpr s16 kKokiriTunicModel = -2; // has none either; the other tunics' model is drawn in green
 constexpr s16 kKokiriBootsModel = -3; // has none either; the Iron Boots' model is drawn as leather
+constexpr s16 kShipModel = -4;        // the System ring's: the Shadow Temple's ship, shrunk to an item's size
 // On the floating screen the ring sits in the middle of the picture, sized in meters on the screen: its radius,
 // each item's size, and how close to an item a controller has to point (the middle, which goes back, is smaller).
 constexpr float kScreenRingRadius = 0.35f;
@@ -53,7 +56,10 @@ constexpr float kScreenBackReach = 0.1f;
 constexpr float kScreenRingDepth = 20.0f;
 constexpr float kItemModelSize = 60.0f; // about how wide an item-get model is at scale 1
 
-enum class EntryKind { UseItem, Equip, Category };
+enum class EntryKind { UseItem, Equip, Category, Action };
+
+// What an Action entry does.
+enum MenuAction { ACTION_NONE, ACTION_PAUSE, ACTION_SETTINGS };
 
 struct Entry {
     EntryKind kind;
@@ -63,11 +69,12 @@ struct Entry {
     u8 equipValue = 0;
     int category = -1;
     s8 slot = -1; // a bottle's inventory slot, since bottles of the same thing are told apart only by it
+    int action = ACTION_NONE;
 };
 
 // The rings, as a tree with a handful of choices on each: Gear (swords, shields, tunics, boots), Weapons (bow and
-// arrows, slingshot, boomerang, hookshot, hammer), Explosives (bombs, bombchus, nuts, sticks), Magic (spells, lens)
-// and Items (ocarina, bottles, trade items).
+// arrows, slingshot, boomerang, hookshot, hammer), Explosives (bombs, bombchus, nuts, sticks), Magic (spells, lens),
+// Items (ocarina, bottles, trade items) and System (the pause menu and the VR settings).
 enum MenuCategory {
     CAT_ROOT,
     CAT_GEAR,
@@ -82,6 +89,7 @@ enum MenuCategory {
     CAT_ITEMS,
     CAT_BOTTLES,
     CAT_TRADE,
+    CAT_SYSTEM,
 };
 
 s16 ItemModel(u8 item) {
@@ -216,7 +224,7 @@ void AddCategory(std::vector<Entry>& out, int category) {
     if (entries.size() == 1) {
         out.push_back(entries[0]);
     } else if (!entries.empty()) {
-        Entry entry = { EntryKind::Category, entries[0].model };
+        Entry entry = { EntryKind::Category, (category == CAT_SYSTEM) ? kShipModel : entries[0].model };
         entry.category = category;
         out.push_back(entry);
     }
@@ -226,7 +234,7 @@ std::vector<Entry> CategoryEntries(int category) {
     std::vector<Entry> out;
     switch (category) {
         case CAT_ROOT:
-            for (int child : { CAT_GEAR, CAT_WEAPONS, CAT_EXPLOSIVES, CAT_MAGIC, CAT_ITEMS }) {
+            for (int child : { CAT_GEAR, CAT_WEAPONS, CAT_EXPLOSIVES, CAT_MAGIC, CAT_ITEMS, CAT_SYSTEM }) {
                 AddCategory(out, child);
             }
             break;
@@ -298,6 +306,16 @@ std::vector<Entry> CategoryEntries(int category) {
             AddItem(out, gSaveContext.inventory.items[SLOT_TRADE_ADULT]);
             AddAmmoItem(out, ITEM_BEAN);
             break;
+        case CAT_SYSTEM: {
+            // The pause menu (its map and quest pages), shown by a map, and the VR settings, by a compass.
+            Entry pause = { EntryKind::Action, GID_DUNGEON_MAP };
+            pause.action = ACTION_PAUSE;
+            out.push_back(pause);
+            Entry settings = { EntryKind::Action, GID_COMPASS };
+            settings.action = ACTION_SETTINGS;
+            out.push_back(settings);
+            break;
+        }
         default:
             break;
     }
@@ -464,6 +482,8 @@ void Close() {
     sMenu.entries.clear();
 }
 
+void OpenPanel(bool onScreen);
+
 void Choose(const Entry& entry) {
     switch (entry.kind) {
         case EntryKind::UseItem:
@@ -482,9 +502,346 @@ void Choose(const Entry& entry) {
         case EntryKind::Category:
             ShowRing(entry.category, entry.model);
             break;
+        case EntryKind::Action: {
+            bool onScreen = sMenu.onScreen;
+            Close();
+            if (entry.action == ACTION_PAUSE) {
+                Game_PressStart();
+            } else if (entry.action == ACTION_SETTINGS) {
+                OpenPanel(onScreen);
+            }
+            break;
+        }
     }
     Runtime::Get().Vibrate(sMenu.hand, 0.5f, 0.05f);
 }
+
+// The VR settings panel, opened from the System ring. It's drawn into the game's overlay with its debug text, on the
+// 320x240 screen (the panel rect): in the world the HUD texture is shown on a panel in front of the player, and on
+// the floating screen it's simply part of the picture. Either hand points at a row; pulling the trigger or
+// squeezing the grip on it flips a switch, or lowers a number on the row's left half and raises it on its right
+// half, again and again while held. Settings are saved when it closes.
+constexpr int kPanelX = 60;
+constexpr int kPanelY = 36;
+constexpr int kPanelW = 200;
+constexpr int kPanelH = 172;
+constexpr int kPanelFirstRow = 62;     // y of the first row's text
+constexpr int kPanelRowStep = 14;
+constexpr float kPanelWidth = 0.55f;   // meters, in the world
+constexpr float kPanelForward = 0.55f; // meters ahead of the head when it opens
+constexpr float kPanelDrop = 0.15f;    // and below eye level
+constexpr float kRepeatDelay = 0.4f;   // seconds a number row is held before it repeats
+constexpr float kRepeatInterval = 0.08f;
+
+enum class RowKind { Switch, Number, Recenter, Close };
+
+struct PanelRow {
+    const char* label;
+    RowKind kind;
+    const char* cvar;
+    int defaultValue;
+    int min;
+    int max;
+    int step;
+    const char* off;  // a switch's two settings
+    const char* on;
+    const char* unit; // after a number
+    const char* zero; // shown instead of a number that's 0, if set
+};
+
+constexpr PanelRow SwitchRow(const char* label, const char* cvar, const char* off = "OFF", const char* on = "ON") {
+    return { label, RowKind::Switch, cvar, 0, 0, 1, 1, off, on, "", nullptr };
+}
+
+constexpr PanelRow NumberRow(const char* label, const char* cvar, int defaultValue, int min, int max, int step,
+                             const char* unit, const char* zero = nullptr) {
+    return { label, RowKind::Number, cvar, defaultValue, min, max, step, "", "", unit, zero };
+}
+
+constexpr PanelRow ActionRow(const char* label, RowKind kind) {
+    return { label, kind, nullptr, 0, 0, 0, 0, "", "", "", nullptr };
+}
+
+const PanelRow kPanelRows[] = {
+    SwitchRow("SEATED MODE", CVAR_SETTING("VR.Seated")),
+    NumberRow("YOUR HEIGHT", CVAR_SETTING("VR.PlayerHeight"), 170, 100, 220, 1, " CM"),
+    NumberRow("ADULT SCALE", CVAR_SETTING("VR.AdultWorldScale"), 100, 70, 150, 5, "%"),
+    NumberRow("CHILD SCALE", CVAR_SETTING("VR.ChildWorldScale"), 100, 70, 150, 5, "%"),
+    NumberRow("SNAP TURN", CVAR_SETTING("VR.SnapTurn"), 30, 0, 90, 15, " DEG", "SMOOTH"),
+    SwitchRow("MOVEMENT", CVAR_SETTING("VR.HandMovement"), "HEAD", "HAND"),
+    SwitchRow("SWORD HAND", CVAR_SETTING("VR.SwordInRightHand"), "LEFT", "RIGHT"),
+    SwitchRow("GRAB DROPS", CVAR_SETTING("VR.GrabDrops")),
+    ActionRow("RECENTER VIEW", RowKind::Recenter),
+    ActionRow("CLOSE", RowKind::Close),
+};
+constexpr int kPanelRowCount = sizeof(kPanelRows) / sizeof(kPanelRows[0]);
+
+struct Panel {
+    bool open = false;
+    bool onScreen = false;
+    bool changed = false;
+    Pose pose;
+    int hovered = -1;
+    float cursor[2] = {};
+    bool cursorShown = false;
+    int handRow[HAND_COUNT] = { -1, -1 };
+    float handX[HAND_COUNT] = {};
+    int repeatHand = -1;
+    float repeatTimer = 0.0f;
+};
+
+Panel sPanel;
+
+void OpenPanel(bool onScreen) {
+    sPanel = {};
+    sPanel.open = true;
+    sPanel.onScreen = onScreen;
+    if (!onScreen) {
+        sPanel.pose = Game_PanelInFront(kPanelForward, kPanelDrop);
+        if (!sPanel.pose.valid) {
+            sPanel.open = false;
+        }
+    }
+}
+
+void ClosePanel() {
+    if (sPanel.changed) {
+        CVarSave();
+    }
+    sPanel.open = false;
+}
+
+// Where a controller points on the panel, on the 320x240 screen, if it does.
+bool PanelPoint(const ControllerState& state, float& x, float& y) {
+    if (sPanel.onScreen) {
+        Pose screen;
+        float width, height;
+        float meterX, meterY;
+        if (!Runtime::Get().GetScreen(screen, width, height) || !PointOnScreen(state, meterX, meterY)) {
+            return false;
+        }
+        // The game's 320x240 screen spans the picture's height, centered across its width.
+        x = SCREEN_WIDTH * 0.5f + meterX / height * SCREEN_HEIGHT;
+        y = SCREEN_HEIGHT * 0.5f - meterY / height * SCREEN_HEIGHT;
+    } else {
+        if (!state.aimPose.valid) {
+            return false;
+        }
+        const float* q = state.aimPose.orientation;
+        Vec3 aim = Normalize({ -2.0f * (q[0] * q[2] + q[3] * q[1]), -2.0f * (q[1] * q[2] - q[3] * q[0]),
+                               -(1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1])) });
+        // The panel only turns about the vertical, and faces the player along its +Z.
+        float yaw = 2.0f * atan2f(sPanel.pose.orientation[1], sPanel.pose.orientation[3]);
+        Vec3 normal = { sinf(yaw), 0.0f, cosf(yaw) };
+        Vec3 right = { cosf(yaw), 0.0f, -sinf(yaw) };
+        float facing = aim.x * normal.x + aim.y * normal.y + aim.z * normal.z;
+        if (facing > -0.01f) {
+            return false;
+        }
+        Vec3 toPanel = Sub(sPanel.pose.position, state.aimPose.position);
+        float distance = (toPanel.x * normal.x + toPanel.y * normal.y + toPanel.z * normal.z) / facing;
+        if (distance <= 0.0f) {
+            return false;
+        }
+        float hit[3] = { state.aimPose.position[0] + aim.x * distance, state.aimPose.position[1] + aim.y * distance,
+                         state.aimPose.position[2] + aim.z * distance };
+        Vec3 fromMiddle = Sub(hit, sPanel.pose.position);
+        float height = kPanelWidth * kPanelH / kPanelW;
+        x = kPanelX + ((fromMiddle.x * right.x + fromMiddle.z * right.z) / kPanelWidth + 0.5f) * kPanelW;
+        y = kPanelY + (0.5f - fromMiddle.y / height) * kPanelH;
+    }
+    return x >= kPanelX && x < kPanelX + kPanelW && y >= kPanelY && y < kPanelY + kPanelH;
+}
+
+int PanelRowAt(float y) {
+    for (int i = 0; i < kPanelRowCount; i++) {
+        float top = kPanelFirstRow + i * kPanelRowStep - 3.0f;
+        if (y >= top && y < top + kPanelRowStep) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+void ActivateRow(int row, float x, Hand hand) {
+    const PanelRow& r = kPanelRows[row];
+    switch (r.kind) {
+        case RowKind::Switch:
+            CVarSetInteger(r.cvar, CVarGetInteger(r.cvar, r.defaultValue) ? 0 : 1);
+            sPanel.changed = true;
+            break;
+        case RowKind::Number: {
+            int value = CVarGetInteger(r.cvar, r.defaultValue);
+            value += (x < kPanelX + kPanelW * 0.5f) ? -r.step : r.step;
+            CVarSetInteger(r.cvar, std::clamp(value, r.min, r.max));
+            sPanel.changed = true;
+            break;
+        }
+        case RowKind::Recenter:
+            Game_Recenter();
+            break;
+        case RowKind::Close:
+            ClosePanel();
+            break;
+    }
+    Runtime::Get().Vibrate(hand, 0.3f, 0.03f);
+}
+
+void UpdatePanel(bool onScreen, bool menuPressed, const bool choosePressed[HAND_COUNT]) {
+    Runtime& runtime = Runtime::Get();
+    const Pose& head = runtime.GetHead();
+    if (sPanel.onScreen != onScreen || menuPressed || !head.valid ||
+        (!onScreen && Length(Sub(head.position, sPanel.pose.position)) > kCloseDistance)) {
+        ClosePanel();
+        return;
+    }
+    sPanel.hovered = -1;
+    sPanel.cursorShown = false;
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
+        float x = 0.0f;
+        float y = 0.0f;
+        int row = PanelPoint(state, x, y) ? PanelRowAt(y) : -1;
+        if (row != sPanel.handRow[hand] && row >= 0) {
+            runtime.Vibrate(static_cast<Hand>(hand), 0.15f, 0.02f);
+        }
+        sPanel.handRow[hand] = row;
+        sPanel.handX[hand] = x;
+        if (row >= 0 && sPanel.hovered < 0) {
+            sPanel.hovered = row;
+            sPanel.cursor[0] = x;
+            sPanel.cursor[1] = y;
+            sPanel.cursorShown = true;
+        }
+    }
+    float frame = runtime.GetRefreshRate() > 0 ? 1.0f / runtime.GetRefreshRate() : 0.0f;
+    for (int hand = 0; hand < HAND_COUNT && sPanel.open; hand++) {
+        const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
+        int row = sPanel.handRow[hand];
+        bool held = state.triggerHeld || state.gripHeld;
+        if (choosePressed[hand] && row >= 0) {
+            sPanel.repeatHand = hand;
+            sPanel.repeatTimer = kRepeatDelay;
+            ActivateRow(row, sPanel.handX[hand], static_cast<Hand>(hand));
+        } else if (hand == sPanel.repeatHand && held && row >= 0 && kPanelRows[row].kind == RowKind::Number) {
+            sPanel.repeatTimer -= frame;
+            if (sPanel.repeatTimer <= 0.0f) {
+                sPanel.repeatTimer = kRepeatInterval;
+                ActivateRow(row, sPanel.handX[hand], static_cast<Hand>(hand));
+            }
+        } else if (hand == sPanel.repeatHand && !held) {
+            sPanel.repeatHand = -1;
+        }
+    }
+}
+
+// The bomb flower's bomb in VR: the shop's bomb model in the flower bomb's colors, a blue body, a green cap and a red
+// sprout for a fuse (its display list sets its colors itself, so a copy has them changed, made from the game's data
+// the first time it's drawn), with a ring of petals around the cap: spikes of its own, pale at the cap and yellow
+// at their tips, long and short in turn. Model units, as the shop's bomb's: its cap is a ring of radius 12 from 17
+// to 22 up, and its fuse runs from 22 to 30.
+constexpr u32 kShopBombColorSwaps[][2] = {
+    { 0x003C50FF, 0x4664E6FF }, // body, main: dark teal to blue
+    { 0x001428FF, 0x0F1450FF }, // body, shadow
+    { 0x32323CFF, 0x28501EFF }, // cap, shadow: grey to dark green (its main color, white, is shared with no other part)
+    { 0xFFC85AFF, 0xF04628FF }, // fuse, main: gold to red
+    { 0x643C1EFF, 0x781A0AFF }, // fuse, shadow
+};
+constexpr u32 kShopBombCapPrim = 0xFFFFFFFF;
+constexpr u32 kBombFlowerCapPrim = 0x96C850FF;
+constexpr int kPetalCount = 16;
+constexpr float kPetalBaseRadius = 11.5f;
+constexpr float kPetalBaseHeight = 17.5f;
+constexpr float kPetalHalfWidth = 2.6f;
+std::vector<Gfx> sBombFlowerDL;
+Vtx sPetals[kPetalCount * 3];
+
+void BuildBombFlower() {
+    auto bomb = std::static_pointer_cast<Fast::DisplayList>(ResourceMgr_GetResourceByNameHandlingMQ(gGiBombDL));
+    if (bomb == nullptr) {
+        return;
+    }
+    sBombFlowerDL = bomb->Instructions;
+    bool capColored = false;
+    for (Gfx& command : sBombFlowerDL) {
+        u32 opcode = static_cast<u32>(command.words.w0 >> 24) & 0xFF;
+        if (opcode != G_SETPRIMCOLOR && opcode != G_SETENVCOLOR) {
+            continue;
+        }
+        u32 color = static_cast<u32>(command.words.w1);
+        // The cap's main color is the first white the list sets; the body's comes before it.
+        if (opcode == G_SETPRIMCOLOR && color == kShopBombCapPrim && !capColored) {
+            command.words.w1 = kBombFlowerCapPrim;
+            capColored = true;
+            continue;
+        }
+        for (const auto& swap : kShopBombColorSwaps) {
+            if (color == swap[0]) {
+                command.words.w1 = swap[1];
+                break;
+            }
+        }
+    }
+    for (int i = 0; i < kPetalCount; i++) {
+        float angle = i * 2.0f * static_cast<float>(M_PI) / kPetalCount;
+        float c = cosf(angle);
+        float s = sinf(angle);
+        bool longPetal = (i % 2) == 0;
+        float tipRadius = longPetal ? 25.0f : 20.0f;
+        float tipHeight = longPetal ? 21.0f : 19.5f;
+        Vtx* v = &sPetals[i * 3];
+        auto set = [](Vtx& vtx, float x, float y, float z, u8 r, u8 g, u8 b) {
+            vtx.v.ob[0] = static_cast<s16>(lroundf(x));
+            vtx.v.ob[1] = static_cast<s16>(lroundf(y));
+            vtx.v.ob[2] = static_cast<s16>(lroundf(z));
+            vtx.v.flag = 0;
+            vtx.v.tc[0] = vtx.v.tc[1] = 0;
+            vtx.v.cn[0] = r;
+            vtx.v.cn[1] = g;
+            vtx.v.cn[2] = b;
+            vtx.v.cn[3] = 255;
+        };
+        set(v[0], kPetalBaseRadius * c - kPetalHalfWidth * s, kPetalBaseHeight,
+            kPetalBaseRadius * s + kPetalHalfWidth * c, 245, 240, 215);
+        set(v[1], kPetalBaseRadius * c + kPetalHalfWidth * s, kPetalBaseHeight,
+            kPetalBaseRadius * s - kPetalHalfWidth * c, 245, 240, 215);
+        set(v[2], tipRadius * c, tipHeight, tipRadius * s, 235, 175, 45);
+    }
+}
+
+} // namespace
+
+// Draws the bomb flower's bomb at the current matrix, in the shop's bomb's model units.
+void DrawBombFlowerBomb(PlayState* play) {
+    if (sBombFlowerDL.empty()) {
+        BuildBombFlower();
+        if (sBombFlowerDL.empty()) {
+            return;
+        }
+    }
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx_SetupDL_25Opa(gfxCtx);
+    Gfx*& opa = gfxCtx->polyOpa.p;
+    gSPMatrix(opa++, MATRIX_NEWMTX(gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    gSPDisplayList(opa++, sBombFlowerDL.data());
+
+    // The petals: plain colors, seen from both sides.
+    gDPPipeSync(opa++);
+    gSPTexture(opa++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
+    gSPClearGeometryMode(opa++, G_LIGHTING | G_CULL_BOTH | G_TEXTURE_GEN);
+    gDPSetCombineMode(opa++, G_CC_SHADE, G_CC_SHADE);
+    gDPSetRenderMode(opa++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
+    gSPMatrix(opa++, MATRIX_NEWMTX(gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    constexpr int kPetalsPerLoad = 8;
+    for (int first = 0; first < kPetalCount; first += kPetalsPerLoad) {
+        gSPVertex(opa++, reinterpret_cast<uintptr_t>(&sPetals[first * 3]), kPetalsPerLoad * 3, 0);
+        for (int k = 0; k < kPetalsPerLoad; k++) {
+            gSP1Triangle(opa++, k * 3, k * 3 + 1, k * 3 + 2, 0);
+        }
+    }
+}
+
+namespace {
 
 void Equip(u8 type, u8 value) {
     Inventory_ChangeEquipment(type, value);
@@ -513,6 +870,9 @@ void Items_Close() {
     if (sMenu.open) {
         Close();
     }
+    if (sPanel.open) {
+        ClosePanel();
+    }
 }
 
 void Items_OnFrame(bool onScreen) {
@@ -532,6 +892,11 @@ void Items_OnFrame(bool onScreen) {
     bool menuButton = runtime.GetController(HAND_LEFT).secondary;
     bool menuPressed = menuButton && !sMenuButtonLatched && !Game_PlayingOcarina();
     sMenuButtonLatched = menuButton;
+
+    if (sPanel.open) {
+        UpdatePanel(onScreen, menuPressed, choosePressed);
+        return;
+    }
 
     // Switching between the world and the screen closes it, since it was laid out for the other.
     if (sMenu.open && sMenu.onScreen != onScreen) {
@@ -707,6 +1072,21 @@ void DrawKokiriBoots(PlayState* play) {
     gSPDisplayList(opa++, sKokiriBootsDL.data());
 }
 
+// The System ring's model: the Shadow Temple's ship, its hull as its actor draws it, about 10000 units long, shrunk to
+// an item's size and centered on its middle.
+constexpr float kShipScale = kItemModelSize / 10064.0f;
+constexpr Vec3f kShipMiddle = { -1432.0f, 2796.0f, 0.0f };
+
+void DrawShip(PlayState* play) {
+    Matrix_Scale(kShipScale, kShipScale, kShipScale, MTXMODE_APPLY);
+    Matrix_Translate(-kShipMiddle.x, -kShipMiddle.y, -kShipMiddle.z, MTXMODE_APPLY);
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx_SetupDL_25Opa(gfxCtx);
+    Gfx*& opa = gfxCtx->polyOpa.p;
+    gSPMatrix(opa++, MATRIX_NEWMTX(gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    gSPDisplayList(opa++, (Gfx*)object_haka_objects_DL_00D330);
+}
+
 void DrawModel(PlayState* play, s16 model) {
     if (model == kMasterSwordModel) {
         Randomizer_DrawMasterSword(play, nullptr);
@@ -714,6 +1094,8 @@ void DrawModel(PlayState* play, s16 model) {
         DrawKokiriTunic(play);
     } else if (model == kKokiriBootsModel) {
         DrawKokiriBoots(play);
+    } else if (model == kShipModel) {
+        DrawShip(play);
     } else {
         GetItem_Draw(play, model);
     }
@@ -771,7 +1153,74 @@ void DrawOnScreen(PlayState* play) {
     }
 }
 
+// A box on the 320x240 screen, see-through as its alpha says.
+void DrawBox(Gfx*& overlay, int x0, int y0, int x1, int y1, u8 r, u8 g, u8 b, u8 a) {
+    gDPPipeSync(overlay++);
+    gDPSetCycleType(overlay++, G_CYC_1CYCLE);
+    gDPSetRenderMode(overlay++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    gDPSetCombineMode(overlay++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    gDPSetPrimColor(overlay++, 0, 0, r, g, b, a);
+    gDPFillRectangle(overlay++, x0, y0, x1, y1);
+}
+
+void DrawPanel(PlayState* play) {
+    Gfx*& overlay = play->state.gfxCtx->overlay.p;
+    DrawBox(overlay, kPanelX, kPanelY, kPanelX + kPanelW, kPanelY + kPanelH, 10, 15, 30, 215);
+    if (sPanel.hovered >= 0) {
+        int top = kPanelFirstRow + sPanel.hovered * kPanelRowStep - 3;
+        DrawBox(overlay, kPanelX + 4, top, kPanelX + kPanelW - 4, top + kPanelRowStep - 1, 60, 100, 170, 230);
+    }
+
+    GfxPrint printer;
+    GfxPrint_Init(&printer);
+    GfxPrint_Open(&printer, overlay);
+    GfxPrint_SetColor(&printer, 255, 230, 120, 255);
+    GfxPrint_SetPosPx(&printer, kPanelX + (kPanelW - 11 * 8) / 2, kPanelY + 8);
+    GfxPrint_Printf(&printer, "VR SETTINGS");
+    for (int i = 0; i < kPanelRowCount; i++) {
+        const PanelRow& row = kPanelRows[i];
+        int y = kPanelFirstRow + i * kPanelRowStep;
+        GfxPrint_SetColor(&printer, 255, 255, 255, 255);
+        GfxPrint_SetPosPx(&printer, kPanelX + 10, y);
+        GfxPrint_Printf(&printer, "%s", row.label);
+        char value[16] = "";
+        if (row.kind == RowKind::Switch) {
+            snprintf(value, sizeof(value), "%s", CVarGetInteger(row.cvar, row.defaultValue) ? row.on : row.off);
+        } else if (row.kind == RowKind::Number) {
+            int number = CVarGetInteger(row.cvar, row.defaultValue);
+            if (number == 0 && row.zero != nullptr) {
+                snprintf(value, sizeof(value), "%s", row.zero);
+            } else {
+                snprintf(value, sizeof(value), "%d%s", number, row.unit);
+            }
+            // Arrows at the row's two ends, where pointing lowers or raises it.
+            GfxPrint_SetColor(&printer, 150, 230, 255, 255);
+            GfxPrint_SetPosPx(&printer, kPanelX + 112, y);
+            GfxPrint_Printf(&printer, "<");
+            GfxPrint_SetPosPx(&printer, kPanelX + kPanelW - 16, y);
+            GfxPrint_Printf(&printer, ">");
+        }
+        if (value[0] != '\0') {
+            int right = kPanelX + kPanelW - ((row.kind == RowKind::Number) ? 20 : 10);
+            GfxPrint_SetColor(&printer, 150, 230, 255, 255);
+            GfxPrint_SetPosPx(&printer, right - 8 * static_cast<int>(strlen(value)), y);
+            GfxPrint_Printf(&printer, "%s", value);
+        }
+    }
+    overlay = GfxPrint_Close(&printer);
+    GfxPrint_Destroy(&printer);
+
+    if (sPanel.cursorShown) {
+        int x = static_cast<int>(sPanel.cursor[0]);
+        int y = static_cast<int>(sPanel.cursor[1]);
+        DrawBox(overlay, x - 2, y - 2, x + 2, y + 2, 255, 220, 60, 255);
+    }
+}
+
 void Items_Draw(PlayState* play) {
+    if (sPanel.open) {
+        DrawPanel(play);
+    }
     if (!sMenu.open || sMenu.entries.empty()) {
         return;
     }
@@ -815,7 +1264,20 @@ void Items_ApplyPending() {
 }
 
 bool Items_MenuOpen() {
-    return sMenu.open;
+    return sMenu.open || sPanel.open;
+}
+
+bool Items_PanelShown(Pose& pose, float& width, int rect[4]) {
+    if (!sPanel.open || sPanel.onScreen) {
+        return false;
+    }
+    pose = sPanel.pose;
+    width = kPanelWidth;
+    rect[0] = kPanelX;
+    rect[1] = kPanelY;
+    rect[2] = kPanelW;
+    rect[3] = kPanelH;
+    return true;
 }
 
 s16 Items_ItemModel(u8 item) {
@@ -823,3 +1285,7 @@ s16 Items_ItemModel(u8 item) {
 }
 
 } // namespace SohVr
+
+extern "C" void Vr_DrawBombFlowerBomb(PlayState* play) {
+    SohVr::DrawBombFlowerBomb(play);
+}

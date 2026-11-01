@@ -4,6 +4,8 @@
 // the player, with rings inside rings. Gear swaps on the spot; usable items go into the hand that chose them,
 // through the game's own item code.
 
+#include "VrRuntime.h"
+
 struct PlayState;
 
 namespace SohVr {
@@ -16,8 +18,11 @@ void Items_Close();
 void Items_Draw(PlayState* play);
 // Per game tick, before the game reads input: applies a chosen piece of gear.
 void Items_ApplyPending();
-// Whether the menu is open, so that hand's grip isn't also a grab or a throw.
+// Whether the menu or the VR settings panel is open, so that hand's grip isn't also a grab or a throw.
 bool Items_MenuOpen();
+// Whether the VR settings panel is shown in the world, and where: its pose, its width (meters), and the part of the
+// HUD it's drawn into (x, y, width, height on the 320x240 screen).
+bool Items_PanelShown(Pose& pose, float& width, int rect[4]);
 // The item-get model the menu shows for an item.
 short Items_ItemModel(unsigned char item);
 

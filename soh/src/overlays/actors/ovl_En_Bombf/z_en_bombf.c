@@ -503,7 +503,8 @@ void EnBombf_Draw(Actor* thisx, PlayState* play) {
         }
 
         if (Vr_UseVendorModels()) {
-            // In VR the bomb is the shop's 3D bomb, as plain bombs are (see EnBom_Draw), at the flower bomb's size.
+            // In VR the bomb is the shop's 3D bomb, as plain bombs are (see EnBom_Draw), at the flower bomb's size and
+            // in its colors, with petals (see Vr_DrawBombFlowerBomb).
             if (thisx->params != BOMBFLOWER_BODY) {
                 // On the plant it rests on the ground among the leaves, as the plant's own bomb does: its bottom is
                 // 30 below its origin, so its origin goes 110 above the middle of the plant's own bomb.
@@ -519,7 +520,7 @@ void EnBombf_Draw(Actor* thisx, PlayState* play) {
                 Matrix_SetTranslateRotateYXZ(origin.x, origin.y, origin.z, &thisx->shape.rot);
                 Matrix_Scale(sVrBombScale, sVrBombScale, sVrBombScale, MTXMODE_APPLY);
             }
-            GetItem_Draw(play, GID_BOMB);
+            Vr_DrawBombFlowerBomb(play);
         } else {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 200, 255, 200, 255);
             gDPPipeSync(POLY_OPA_DISP++);

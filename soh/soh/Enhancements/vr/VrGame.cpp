@@ -37,6 +37,8 @@ extern PlayState* gPlayState;
 #define CVAR_VR_ADULT_WORLD_SCALE CVAR_SETTING("VR.AdultWorldScale")
 #define CVAR_VR_CHILD_WORLD_SCALE CVAR_SETTING("VR.ChildWorldScale")
 #define CVAR_VR_SNAP_TURN CVAR_SETTING("VR.SnapTurn")         // degrees; 0 turns smoothly
+#define CVAR_VR_SEATED CVAR_SETTING("VR.Seated")
+#define CVAR_VR_HAND_MOVEMENT CVAR_SETTING("VR.HandMovement") // the stick moves along where the left hand points
 // 0 keeps Link's hands on their own sides, so the sword is in the left hand like his; 1 swaps them.
 #define CVAR_VR_SWORD_IN_RIGHT_HAND CVAR_SETTING("VR.SwordInRightHand")
 // Extra rotation in degrees for each of Link's hand models, about the grip's X, Y and Z axes, for fine tuning.
@@ -251,6 +253,10 @@ struct TickState {
     // A fade, transition or game over is drawing over the view.
     bool fade = false;
     bool gameOver = false;
+    // On the title screen the view follows the game's camera instead of Link (see FollowCamera), and the play
+    // space's turn changes each tick, so the frames between ticks ease it.
+    bool fromCamera = false;
+    float yaw = 0.0f;
     bool message = false;
     s16 textboxY = 0;
     Gfx* overlayBranch = nullptr;
@@ -272,6 +278,7 @@ struct TickState {
 TickState sBuild;  // the tick whose display list is being built
 TickState sRender; // the tick whose frames are being rendered
 Vec3f sRenderPrevAnchor = {};
+float sRenderPrevYaw = 0.0f;
 bool sAwaitingWorldView = false;
 bool sWorldViewCaptured = false;
 
@@ -279,6 +286,10 @@ bool sWorldViewCaptured = false;
 float sYaw = 0.0f;
 float sCenter[2] = {};
 bool sNeedsRecenter = true;
+// Seated, how far (meters) the player's head and hands are lifted, so the head is where a standing player's eyes
+// would be (see UpdateSeating), and whether that's been measured since seated mode came on.
+float sSeatedLift = 0.0f;
+bool sSeatMeasured = false;
 PlayState* sLastPlay = nullptr;
 s16 sLastScene = -1;
 float sHeadDrop = 0.0f; // how far the play space is lowered to follow Link's head (see kHeadFollowEase), in game units
@@ -306,7 +317,7 @@ Vec3 HeadForward() {
 
 Vec3 ToWorldAround(const float position[3], const Vec3f& anchor, float unitsPerMeter, float centerX,
                    float centerZ) {
-    Vec3 local = { (position[0] - centerX) * unitsPerMeter, position[1] * unitsPerMeter,
+    Vec3 local = { (position[0] - centerX) * unitsPerMeter, (position[1] + sSeatedLift) * unitsPerMeter,
                    (position[2] - centerZ) * unitsPerMeter };
     Vec3 turned = RotateYaw(sYaw, local);
     return { anchor.x + turned.x, anchor.y + turned.y, anchor.z + turned.z };
@@ -395,8 +406,14 @@ bool InGameplay(PlayState* play) {
            play->pauseCtx.state == 0 && play->csCtx.state == CS_STATE_IDLE && play->activeCamera == CAM_ID_MAIN;
 }
 
+// The world is shown in stereo whenever Link is in it, cutscenes included: the player stays in Link's eyes while a
+// scene plays out or the game's camera goes off on its own (opening a chest or a door), instead of watching it on
+// the floating screen. So is the title screen's cutscene, from its own camera (see FollowCamera). File select, the
+// pause menu and the credits stay on the screen.
 bool ShowsWorld(PlayState* play) {
-    return InGameplay(play) && !UsesFixedCamera(play);
+    return play != nullptr && GET_PLAYER(play) != nullptr &&
+           (gSaveContext.gameMode == GAMEMODE_NORMAL || gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN) &&
+           play->pauseCtx.state == 0 && !UsesFixedCamera(play);
 }
 
 // Link is being played on the floating screen, in a place with a fixed camera.
@@ -422,7 +439,7 @@ bool PlayingOcarina() {
 bool Crouching() {
     const Pose& head = Runtime::Get().GetHead();
     float eyeHeight = CVarGetInteger(CVAR_VR_PLAYER_HEIGHT, 170) / 100.0f * kEyeHeightRatio;
-    return head.valid && head.position[1] < eyeHeight * kCrouchRatio;
+    return head.valid && head.position[1] + sSeatedLift < eyeHeight * kCrouchRatio;
 }
 
 // Whether a hand is behind the head at about head height, where it would reach for a sword on the back.
@@ -521,13 +538,11 @@ void UpdateBoomerang() {
 // Blocks (and Armos statues) are taken hold of by hand. With both grips closed and both hands out in front at least
 // the block reach (meters, from the head), A is held for one as soon as the game offers to grab it (Link up against
 // it and facing it), as the game wants A held for as long as Link holds on. The grips can close first and Link be
-// walked into it after, since its collision can be smaller than it looks. Moving the hands, or walking, toward the block past the push distance
-// from where they took hold pushes it, and back past it pulls it (see Vr_BlockPushDirection), until they come back.
-// Letting go of either grip lets go of the block.
+// walked into it after, since its collision can be smaller than it looks. Pushing and pulling is the stick's, as in
+// the game, and relative to where the head looks, as walking is: forward while looking at the block pushes it, and
+// forward while looking away pulls it. Letting go of either grip lets go of the block.
 constexpr float kBlockReach = 0.15f;
-constexpr float kBlockPushDistance = 0.06f;
 bool sBlockHeld = false;
-float sBlockStart[2] = {};
 
 // Where Link faces, in the play space (only x and z are set).
 Vec3 FacingInPlay(Player* player) {
@@ -560,14 +575,23 @@ void UpdateBlockGrip() {
         return;
     }
     sBlockHeld = true;
-    sBlockStart[0] = (left.gripPose.position[0] + right.gripPose.position[0]) * 0.5f;
-    sBlockStart[1] = (left.gripPose.position[2] + right.gripPose.position[2]) * 0.5f;
     Runtime::Get().Vibrate(HAND_LEFT, 0.4f, 0.05f);
     Runtime::Get().Vibrate(HAND_RIGHT, 0.4f, 0.05f);
     SPDLOG_INFO("[VR] Took hold of a block with both hands");
 }
 
 bool sMenuInputsHeld = false;
+
+// While the ocarina is up, the right stick pushed up, down, left or right plays C-up, C-down, C-left or C-right.
+u16 OcarinaStickNotes(const float stick[2]) {
+    if (fabsf(stick[1]) > 0.7f && fabsf(stick[1]) > fabsf(stick[0])) {
+        return stick[1] > 0.0f ? BTN_CUP : BTN_CDOWN;
+    }
+    if (fabsf(stick[0]) > 0.7f && fabsf(stick[0]) > fabsf(stick[1])) {
+        return stick[0] > 0.0f ? BTN_CRIGHT : BTN_CLEFT;
+    }
+    return 0;
+}
 
 u16 CurrentButtons() {
     const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
@@ -606,7 +630,9 @@ u16 CurrentButtons() {
             buttons |= left.triggerHeld ? BTN_Z : 0;
             buttons |= left.gripHeld ? BTN_R : 0;
         }
-        if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
+        if (PlayingOcarina()) {
+            buttons |= OcarinaStickNotes(right.stick);
+        } else if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
             buttons |= right.stick[1] > 0.0f ? BTN_CUP : BTN_L;
         }
         buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
@@ -634,14 +660,13 @@ u16 CurrentButtons() {
     if (Crouching() && Vr_IsWorldStereo() && Player_IsChildWithHylianShield(GET_PLAYER(gPlayState))) {
         buttons |= BTN_R;
     }
-    // The right stick turns sideways. Pushed down it's L. With the ocarina up, up and down are its C-up and C-down
-    // notes; otherwise up does nothing, since C-up's first-person view has no place in VR.
-    if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
-        if (ocarina) {
-            buttons |= right.stick[1] > 0.0f ? BTN_CUP : BTN_CDOWN;
-        } else if (right.stick[1] < 0.0f) {
-            buttons |= BTN_L;
-        }
+    // The right stick turns sideways. Pushed down it's L; up does nothing, since C-up's first-person view has no place
+    // in VR. With the ocarina up it plays the four C notes instead, and doesn't turn (see Game_OnFrame).
+    if (ocarina) {
+        buttons |= OcarinaStickNotes(right.stick);
+    } else if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0]) &&
+               right.stick[1] < 0.0f) {
+        buttons |= BTN_L;
     }
     // SteamVR on a Quest keeps the menu button for its own dashboard, so the stick click pauses too.
     buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
@@ -1083,6 +1108,9 @@ void UpdateLiftGrab() {
 u8 sHeldMask = ITEM_NONE;
 Hand sMaskHand = HAND_LEFT;
 bool sMaskGripLatched[HAND_COUNT] = {};
+// Whether the hand holding a mask has been away from the face since it took the mask off. Until it has, the mask
+// doesn't go back on: the hand is still at the face right after, and it went straight back on the next frame.
+bool sMaskLeftFace = true;
 
 // A bottle taken from the menu goes on C-left (see Game_TakeItem); whether the request waiting for the player is
 // one, and what a full one holds.
@@ -1114,7 +1142,9 @@ void UpdateMasks() {
         bool pressed = state.gripHeld && !sMaskGripLatched[hand];
         sMaskGripLatched[hand] = state.gripHeld;
         if (sHeldMask != ITEM_NONE) {
-            if (hand == sMaskHand && HandAtFace(state.gripPose)) {
+            if (hand == sMaskHand && !HandAtFace(state.gripPose)) {
+                sMaskLeftFace = true;
+            } else if (hand == sMaskHand && sMaskLeftFace) {
                 player->currentMask = sHeldMask - ITEM_MASK_KEATON + PLAYER_MASK_KEATON;
                 gSaveContext.ship.maskMemory = player->currentMask;
                 Audio_PlayActorSound2(&player->actor, NA_SE_PL_CHANGE_ARMS);
@@ -1125,6 +1155,7 @@ void UpdateMasks() {
         } else if (player->currentMask != PLAYER_MASK_NONE && pressed && HandAtFace(state.gripPose)) {
             sHeldMask = player->currentMask - PLAYER_MASK_KEATON + ITEM_MASK_KEATON;
             sMaskHand = static_cast<Hand>(hand);
+            sMaskLeftFace = false;
             player->currentMask = PLAYER_MASK_NONE;
             gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
             Audio_PlayActorSound2(&player->actor, NA_SE_PL_CHANGE_ARMS);
@@ -1276,6 +1307,40 @@ void AimGameCamera(PlayState* play) {
 
 Vec3f RootMotionOffset(Player* player);
 
+// On the title screen the player watches its cutscene from its camera, wherever it goes: the head is put where the
+// camera is, as a standing player's eyes, and the play space turns as the camera does, so the way the player faced
+// when it began is always the way the camera looks. Its logo is on a big panel ahead (see Game_GetHudQuads).
+Pose PanelInFront(float distance, float drop);
+constexpr float kTitlePanelDistance = 2.5f; // meters
+constexpr float kTitlePanelWidth = 2.4f;
+bool sFollowingCamera = false;
+float sCameraHeadYaw = 0.0f;
+Pose sTitlePanel;
+
+void FollowCamera(PlayState* play, float heightMeters) {
+    const Pose& head = Runtime::Get().GetHead();
+    Camera* camera = GET_ACTIVE_CAM(play);
+    if (!head.valid || camera == nullptr) {
+        return;
+    }
+    if (!sFollowingCamera) {
+        Vec3 forward = HeadForward();
+        sCameraHeadYaw = atan2f(-forward.x, -forward.z);
+        sTitlePanel = PanelInFront(kTitlePanelDistance, 0.0f);
+        sFollowingCamera = true;
+    }
+    float lookX = camera->at.x - camera->eye.x;
+    float lookZ = camera->at.z - camera->eye.z;
+    if (lookX * lookX + lookZ * lookZ > 0.01f) {
+        sYaw = atan2f(lookX, lookZ) + static_cast<float>(M_PI) - sCameraHeadYaw;
+    }
+    sCenter[0] = head.position[0];
+    sCenter[1] = head.position[2];
+    sBuild.centerShift[0] = sBuild.centerShift[1] = 0.0f;
+    float eyeHeight = std::max(heightMeters, 1.0f) * kEyeHeightRatio * sBuild.unitsPerMeter;
+    sBuild.anchor = { camera->eye.x, camera->eye.y - eyeHeight, camera->eye.z };
+}
+
 // Runs as the game starts drawing a tick, before the play view's matrices are built.
 void CaptureTick() {
     sBuild.stereo = false;
@@ -1283,10 +1348,16 @@ void CaptureTick() {
     gVrBillboard = nullptr;
     if (!SessionRunning() || !ShowsWorld(gPlayState)) {
         sNeedsRecenter = true;
+        sFollowingCamera = false;
         return;
     }
 
     Player* player = GET_PLAYER(gPlayState);
+    sBuild.fromCamera = gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN;
+    if (!sBuild.fromCamera && sFollowingCamera) {
+        sFollowingCamera = false;
+        sNeedsRecenter = true;
+    }
     if (gPlayState != sLastPlay || gPlayState->sceneNum != sLastScene) {
         sNeedsRecenter = true;
         sLastPlay = gPlayState;
@@ -1319,6 +1390,9 @@ void CaptureTick() {
     Vec3f carried = inSaddle ? Vec3f{ 0.0f, 0.0f, 0.0f } : RootMotionOffset(player);
     sBuild.anchor = { player->actor.world.pos.x + carried.x, player->actor.world.pos.y,
                       player->actor.world.pos.z + carried.z };
+    if (sBuild.fromCamera) {
+        FollowCamera(gPlayState, heightMeters);
+    }
 
     // Hanging from a ledge his position stays up on it while he hangs below, climbing onto one his body goes up
     // before his position, crawling his head is a foot off the floor, and in the saddle his position is below the
@@ -1332,7 +1406,10 @@ void CaptureTick() {
         headDrop = player->actor.world.pos.y + eyeHeight - player->actor.focus.pos.y;
     }
     sHeadDrop += (headDrop - sHeadDrop) * kHeadFollowEase;
-    sBuild.anchor.y -= sHeadDrop;
+    if (!sBuild.fromCamera) {
+        sBuild.anchor.y -= sHeadDrop;
+    }
+    sBuild.yaw = sYaw;
     HoldNut();
     // The screen fill can stay switched on, fully transparent, long after a fade, so only a visible one counts.
     bool screenFilled = gPlayState->envCtx.fillScreen && gPlayState->envCtx.screenFillColor[3] > 0;
@@ -1816,6 +1893,7 @@ void RegisterVr() {
 
 void Game_OnTickSubmitted() {
     sRenderPrevAnchor = sRender.anchor;
+    sRenderPrevYaw = sRender.yaw;
     sRender = sBuild;
     sRender.stereo = sBuild.stereo && sWorldViewCaptured;
     sWorldViewCaptured = false;
@@ -1831,8 +1909,40 @@ void Game_OnTickSubmitted() {
     float dz = sRender.anchor.z - sRenderPrevAnchor.z;
     if (dx * dx + dy * dy + dz * dz > kWarpDistance * kWarpDistance) {
         sRenderPrevAnchor = sRender.anchor;
+        sRenderPrevYaw = sRender.yaw;
         sRender.centerShift[0] = sRender.centerShift[1] = 0.0f;
     }
+}
+
+// Seated mode lifts the head and hands together, so the head is where a standing player's eyes would be and the
+// world is the same height as when standing. The lift is measured when seated mode comes on and at every recenter.
+void UpdateSeating(bool recenter) {
+    if (!CVarGetInteger(CVAR_VR_SEATED, 0)) {
+        sSeatedLift = 0.0f;
+        sSeatMeasured = false;
+        return;
+    }
+    const Pose& head = Runtime::Get().GetHead();
+    if (!head.valid || (sSeatMeasured && !recenter)) {
+        return;
+    }
+    float heightMeters = CVarGetInteger(CVAR_VR_PLAYER_HEIGHT, 170) / 100.0f;
+    sSeatedLift = std::max(heightMeters, 1.0f) * kEyeHeightRatio - head.position[1];
+    sSeatMeasured = true;
+    SPDLOG_INFO("[VR] Seated: the view is lifted {:.2f} m", sSeatedLift);
+}
+
+void Game_Recenter() {
+    sNeedsRecenter = true;
+    sSeatMeasured = false;
+}
+
+void Game_PressStart() {
+    sLatchedButtons |= BTN_START;
+}
+
+Pose Game_PanelInFront(float distance, float drop) {
+    return PanelInFront(distance, drop);
 }
 
 void Game_OnFrame() {
@@ -1844,6 +1954,7 @@ void Game_OnFrame() {
     bool stereo = Game_RenderStereo();
     bool recenterPressed = right.stickClick && !sRecenterLatched;
     sRecenterLatched = right.stickClick;
+    UpdateSeating(recenterPressed);
 
     // The floating screen comes back in front of the player each time it's needed, in case they turned away.
     if (!stereo && (sWasStereo || recenterPressed)) {
@@ -1874,67 +1985,82 @@ void Game_OnFrame() {
     }
 
     RecordHands();
-    UpdateDraw();
-    RepairHookshot();
-    CheckHookshotPull();
-    UpdateCarry();
-    UpdateBoomerang();
-    UpdateWorldGrabs();
-    UpdateLiftGrab();
-    UpdateBlockGrip();
-    UpdateMasks();
-    UpdateBottle();
-    UpdateFishing();
-    UpdateTwoHanded();
+    // During a cutscene, or while the game's camera is off doing something, the player watches through Link's eyes
+    // but their hands don't act on the game: no sword, grabs, items or masks, and no item menu or settings panel.
+    if (InGameplay(gPlayState)) {
+        UpdateDraw();
+        RepairHookshot();
+        CheckHookshotPull();
+        UpdateCarry();
+        UpdateBoomerang();
+        UpdateWorldGrabs();
+        UpdateLiftGrab();
+        UpdateBlockGrip();
+        UpdateMasks();
+        UpdateBottle();
+        UpdateFishing();
+        UpdateTwoHanded();
 
-    // Closing either hand over the shoulder draws the sword into that hand, or puts it back.
-    if (sSwordGestureCooldown > 0.0f && runtime.GetRefreshRate() > 0) {
-        sSwordGestureCooldown -= 1.0f / runtime.GetRefreshRate();
-    }
-    for (int hand = 0; hand < HAND_COUNT; hand++) {
-        const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
-        bool pressedNow = state.gripHeld && !sSwordGripLatched[hand];
-        sSwordGripLatched[hand] = state.gripHeld;
-        if (!pressedNow || sSwordGestureCooldown > 0.0f || !HandOverShoulder(state.gripPose)) {
-            continue;
+        // Closing either hand over the shoulder draws the sword into that hand, or puts it back.
+        if (sSwordGestureCooldown > 0.0f && runtime.GetRefreshRate() > 0) {
+            sSwordGestureCooldown -= 1.0f / runtime.GetRefreshRate();
         }
-        bool drawn = SwordDrawn(GET_PLAYER(gPlayState));
-        if (!drawn) {
-            PutLinkHandOn(LINK_LEFT, static_cast<Hand>(hand));
+        for (int hand = 0; hand < HAND_COUNT; hand++) {
+            const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
+            bool pressedNow = state.gripHeld && !sSwordGripLatched[hand];
+            sSwordGripLatched[hand] = state.gripHeld;
+            if (!pressedNow || sSwordGestureCooldown > 0.0f || !HandOverShoulder(state.gripPose)) {
+                continue;
+            }
+            bool drawn = SwordDrawn(GET_PLAYER(gPlayState));
+            if (!drawn) {
+                PutLinkHandOn(LINK_LEFT, static_cast<Hand>(hand));
+            }
+            RequestItem(drawn ? VR_REQUEST_PUT_AWAY : VR_REQUEST_DRAW_SWORD);
+            sSwordGestureCooldown = kSwordGestureCooldown;
+            runtime.Vibrate(static_cast<Hand>(hand), 0.4f, 0.05f);
+            SPDLOG_INFO("[VR] Sword {} with the {} hand", drawn ? "put away" : "drawn", hand == HAND_LEFT ? "left" : "right");
         }
-        RequestItem(drawn ? VR_REQUEST_PUT_AWAY : VR_REQUEST_DRAW_SWORD);
-        sSwordGestureCooldown = kSwordGestureCooldown;
-        runtime.Vibrate(static_cast<Hand>(hand), 0.4f, 0.05f);
-        SPDLOG_INFO("[VR] Sword {} with the {} hand", drawn ? "put away" : "drawn", hand == HAND_LEFT ? "left" : "right");
-    }
 
-    // The trigger on the hand holding an item uses it again, as pressing its button did: toggling the Lens of
-    // Truth, showing a trade item. The bow, hookshot and boomerang have their own use, thrown things are used by
-    // throwing them, bottles by swinging or tipping them, and the fishing rod by casting it.
-    Player* player = GET_PLAYER(gPlayState);
-    u8 held = player->heldItemId;
-    bool useTrigger = runtime.GetController(ControllerFor(ItemHand(held))).triggerHeld;
-    bool thrownItem = held == ITEM_BOMB || held == ITEM_BOMBCHU || held == ITEM_NUT || held == ITEM_STICK;
-    bool physicalItem = (held >= ITEM_BOTTLE && held <= ITEM_POE) || held == ITEM_FISHING_POLE;
-    if (useTrigger && !sUseTriggerLatched && CurrentTool() == HeldTool::None && held < ITEM_NONE_FE && !thrownItem &&
-        !physicalItem &&
-        Player_GetMeleeWeaponHeld(player) == 0 && !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
-        RequestItem(VR_REQUEST_USE_HELD);
-    }
-    sUseTriggerLatched = useTrigger;
+        // The trigger on the hand holding an item uses it again, as pressing its button did: toggling the Lens of
+        // Truth, showing a trade item. The bow, hookshot and boomerang have their own use, thrown things are used by
+        // throwing them, bottles by swinging or tipping them, and the fishing rod by casting it.
+        Player* player = GET_PLAYER(gPlayState);
+        u8 held = player->heldItemId;
+        bool useTrigger = runtime.GetController(ControllerFor(ItemHand(held))).triggerHeld;
+        bool thrownItem = held == ITEM_BOMB || held == ITEM_BOMBCHU || held == ITEM_NUT || held == ITEM_STICK;
+        bool physicalItem = (held >= ITEM_BOTTLE && held <= ITEM_POE) || held == ITEM_FISHING_POLE;
+        if (useTrigger && !sUseTriggerLatched && CurrentTool() == HeldTool::None && held < ITEM_NONE_FE && !thrownItem &&
+            !physicalItem &&
+            Player_GetMeleeWeaponHeld(player) == 0 && !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+            RequestItem(VR_REQUEST_USE_HELD);
+        }
+        sUseTriggerLatched = useTrigger;
 
-    Items_OnFrame(false);
+        Items_OnFrame(false);
+    } else {
+        Items_Close();
+        sBlockHeld = false;
+    }
 
     int snapDegrees = CVarGetInteger(CVAR_VR_SNAP_TURN, 30);
     // Up and down on the right stick are buttons, so only mostly-sideways pushes turn.
     float turn = fabsf(right.stick[0]) >= fabsf(right.stick[1]) ? right.stick[0] : 0.0f;
-    if (snapDegrees > 0) {
+    if (sRender.fromCamera) {
+        // Following the title's camera, it turns the view.
+    } else if (PlayingOcarina()) {
+        // The right stick plays the ocarina's notes instead. A push still held when the ocarina is put away doesn't
+        // turn either, until the stick is let go.
+        sTurnLatched = true;
+    } else if (snapDegrees > 0) {
         if (!sTurnLatched && fabsf(turn) > 0.7f) {
             Turn(-copysignf(DEG_TO_RAD(static_cast<float>(snapDegrees)), turn));
             sTurnLatched = true;
         } else if (fabsf(turn) < 0.3f) {
             sTurnLatched = false;
         }
+    } else if (sTurnLatched) {
+        sTurnLatched = fabsf(turn) >= 0.3f;
     } else if (fabsf(turn) > kStickDeadzone && runtime.GetRefreshRate() > 0) {
         Turn(-turn * kSmoothTurnSpeed / runtime.GetRefreshRate());
     }
@@ -1954,6 +2080,13 @@ bool Game_RenderStereo() {
 void Game_AddEyeMatrices(int eye, float t, uint32_t width, uint32_t height,
                          std::unordered_map<Mtx*, MtxF>& replacements) {
     const EyeView& view = Runtime::Get().GetEyes()[eye];
+    // Following the title's camera, its turns are eased between ticks too, so its pans are smooth.
+    float tickYaw = sYaw;
+    if (sRender.fromCamera) {
+        float turn = sRender.yaw - sRenderPrevYaw;
+        turn = remainderf(turn, 2.0f * static_cast<float>(M_PI));
+        sYaw = sRenderPrevYaw + turn * t;
+    }
     Vec3f anchor = {
         sRenderPrevAnchor.x + (sRender.anchor.x - sRenderPrevAnchor.x) * t,
         sRenderPrevAnchor.y + (sRender.anchor.y - sRenderPrevAnchor.y) * t,
@@ -1967,6 +2100,7 @@ void Game_AddEyeMatrices(int eye, float t, uint32_t width, uint32_t height,
 
     BuildProjection(view.fov, kNearPlane, sRender.zFar, width, height, replacements[sRender.projection]);
     BuildView(eyeWorld, view.pose.orientation, replacements[sRender.viewing]);
+    sYaw = tickYaw;
 
     for (int i = 0; i < sRender.skyboxCount; i++) {
         MtxF centered = sRender.skyboxMatrix[i];
@@ -2058,6 +2192,12 @@ void Game_GetHudQuads(std::vector<HudQuad>& out) {
     if (!Game_SplitHud()) {
         return;
     }
+    if (sRender.fromCamera) {
+        if (sTitlePanel.valid) {
+            out.push_back(MakeQuad(sTitlePanel, kTitlePanelWidth, { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT }));
+        }
+        return;
+    }
     const Runtime& runtime = Runtime::Get();
     const ControllerState& left = runtime.GetController(HAND_LEFT);
     const ControllerState& right = runtime.GetController(HAND_RIGHT);
@@ -2076,6 +2216,13 @@ void Game_GetHudQuads(std::vector<HudQuad>& out) {
     if (sRender.message && sMessagePose.valid) {
         int y = std::clamp(static_cast<int>(sRender.textboxY) - 6, 0, SCREEN_HEIGHT - kTextboxHeight);
         out.push_back(MakeQuad(sMessagePose, 0.9f, { 0, y, SCREEN_WIDTH, kTextboxHeight }));
+    }
+    // The VR settings panel, drawn into the HUD (see Items_DrawPanel), on its own panel in front of the player.
+    Pose panelPose;
+    float panelWidth;
+    int panelRect[4];
+    if (Items_PanelShown(panelPose, panelWidth, panelRect)) {
+        out.push_back(MakeQuad(panelPose, panelWidth, { panelRect[0], panelRect[1], panelRect[2], panelRect[3] }));
     }
 }
 
@@ -2124,6 +2271,30 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
     const SohVr::ControllerState& left = SohVr::Runtime::Get().GetController(SohVr::HAND_LEFT);
     float x = left.stick[0];
     float y = left.stick[1];
+    // The game moves Link relative to where the camera looks, which in the world is where the head looks. With
+    // hand-relative movement the stick is turned by how far the left hand points to the side of that, flat on the
+    // floor, so pushing it forward goes where the hand points. A hand pointing straight up or down leaves it be, and
+    // so does holding a block, which is pushed and pulled relative to where the head looks.
+    const SohVr::Pose& head = SohVr::Runtime::Get().GetHead();
+    bool holdingBlock = Vr_IsWorldStereo() && (GET_PLAYER(gPlayState)->stateFlags2 & PLAYER_STATE2_GRABBING_DYNAPOLY);
+    if (CVarGetInteger(CVAR_VR_HAND_MOVEMENT, 0) && Vr_IsWorldStereo() && !holdingBlock && head.valid &&
+        left.aimPose.valid) {
+        const float* q = left.aimPose.orientation;
+        float handX = -2.0f * (q[0] * q[2] + q[3] * q[1]);
+        float handZ = -(1.0f - 2.0f * (q[0] * q[0] + q[1] * q[1]));
+        SohVr::Vec3 look = SohVr::HeadForward();
+        if (handX * handX + handZ * handZ > 0.1f && look.x * look.x + look.z * look.z > 0.1f) {
+            // Positive to the right of where the head looks (in the play space -z is ahead and +x is right).
+            float side = handX * -look.z + handZ * look.x;
+            float ahead = handX * look.x + handZ * look.z;
+            float turn = atan2f(side, ahead);
+            float c = cosf(turn);
+            float s = sinf(turn);
+            float turnedX = x * c + y * s;
+            y = -x * s + y * c;
+            x = turnedX;
+        }
+    }
     if (x * x + y * y > SohVr::kStickDeadzone * SohVr::kStickDeadzone) {
         pads[0].stick_x = static_cast<int8_t>(lroundf(std::clamp(x, -1.0f, 1.0f) * SohVr::kStickRange));
         pads[0].stick_y = static_cast<int8_t>(lroundf(std::clamp(y, -1.0f, 1.0f) * SohVr::kStickRange));
@@ -2171,7 +2342,14 @@ extern "C" void Vr_PlaceBombModel(Actor* actor, f32 scale, Vec3f* origin, Vec3f*
     fuseTip->z = origin->z + axis.z * kBombFuseTip * scale;
 }
 
+extern "C" bool Vr_ViewFromCamera(void) {
+    return Vr_IsWorldStereo() && SohVr::sBuild.fromCamera;
+}
+
 extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
+    if (Vr_ViewFromCamera()) {
+        return;
+    }
     if (!Vr_IsWorldStereo()) {
         if (SohVr::ScreenGameplay()) {
             SohVr::Items_Draw(play);
@@ -2302,7 +2480,8 @@ extern "C" void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList
 }
 
 extern "C" void Vr_ApplyRoomScale(Player* player) {
-    if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState) || !SohVr::StepsMoveLink(player)) {
+    if (!Vr_IsWorldStereo() || Vr_ViewFromCamera() || player != GET_PLAYER(gPlayState) ||
+        !SohVr::StepsMoveLink(player)) {
         return;
     }
     const SohVr::Pose& head = SohVr::Runtime::Get().GetHead();
@@ -2344,17 +2523,29 @@ extern "C" void Vr_ApplyRoomScale(Player* player) {
     }
 }
 
-extern "C" bool Vr_BlockPushDirection(Player* player, s32* direction) {
-    if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState) || !SohVr::sBlockHeld) {
+// An item Link holds up after getting it is shown above the player's hands: the middle of their grip points, raised
+// the get-item lift (meters), and about the get-item size across (meters) whatever his age. The game puts it above
+// the middle of Link's wrists, which in VR are toward the chest from the controllers, at his own size.
+constexpr float kGetItemLift = 0.1f;
+constexpr float kGetItemSize = 0.15f;
+constexpr float kItemModelUnits = 60.0f; // about how wide an item-get model is at scale 1
+
+extern "C" bool Vr_GetItemPlace(Player* player, Vec3f* pos, f32* scale) {
+    if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState)) {
         return false;
     }
     const SohVr::Runtime& runtime = SohVr::Runtime::Get();
-    const float* left = runtime.GetController(SohVr::HAND_LEFT).gripPose.position;
-    const float* right = runtime.GetController(SohVr::HAND_RIGHT).gripPose.position;
-    SohVr::Vec3 facing = SohVr::FacingInPlay(player);
-    float moved = ((left[0] + right[0]) * 0.5f - SohVr::sBlockStart[0]) * facing.x +
-                  ((left[2] + right[2]) * 0.5f - SohVr::sBlockStart[1]) * facing.z;
-    *direction = (moved > SohVr::kBlockPushDistance) ? 1 : (moved < -SohVr::kBlockPushDistance) ? -1 : 0;
+    const SohVr::Pose& left = runtime.GetController(SohVr::HAND_LEFT).gripPose;
+    const SohVr::Pose& right = runtime.GetController(SohVr::HAND_RIGHT).gripPose;
+    if (!left.valid || !right.valid) {
+        return false;
+    }
+    float middle[3] = { (left.position[0] + right.position[0]) * 0.5f,
+                        (left.position[1] + right.position[1]) * 0.5f + kGetItemLift,
+                        (left.position[2] + right.position[2]) * 0.5f };
+    SohVr::Vec3 world = SohVr::ToWorld(middle, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
+    *pos = { world.x, world.y, world.z };
+    *scale = kGetItemSize * SohVr::sBuild.unitsPerMeter / kItemModelUnits;
     return true;
 }
 
@@ -2531,8 +2722,9 @@ extern "C" void Vr_AimProjectile(Player* player, Actor* projectile) {
         SohVr::FaceAlong(projectile, { hookDirection.x, hookDirection.y, hookDirection.z });
         return;
     }
-    // A seed leaves from between the slingshot's arms and flies the way the slingshot points, whatever the drawing
-    // hand does: along the hand model's +Y, away from where its band is pulled back to.
+    // A seed leaves from between the slingshot's arms and flies along the band: from where the drawing hand pulls it
+    // back to, through the arms, so pulling lower aims higher, as with a real slingshot. Barely drawn, it flies the way
+    // the slingshot points (the hand model's +Y).
     MtxF hand;
     if (Player_HoldsSlingshot(player) && SohVr::HandMatrix(player, SohVr::LINK_RIGHT, hand)) {
         const Vec3f& forks = SohVr::kSlingshotForks;
@@ -2541,6 +2733,18 @@ extern "C" void Vr_AimProjectile(Player* player, Actor* projectile) {
                                   hand.mf[3][1] + forks.x * hand.mf[0][1] + forks.y * hand.mf[1][1] + forks.z * hand.mf[2][1],
                                   hand.mf[3][2] + forks.x * hand.mf[0][2] + forks.y * hand.mf[1][2] + forks.z * hand.mf[2][2] };
         projectile->prevPos = projectile->world.pos;
+        float pouch[3];
+        const SohVr::Pose& slingshot = runtime.GetController(bowHand).gripPose;
+        if (SohVr::DrawPoint(player, pouch) && slingshot.valid) {
+            float dx = pouch[0] - slingshot.position[0];
+            float dy = pouch[1] - slingshot.position[1];
+            float dz = pouch[2] - slingshot.position[2];
+            if (dx * dx + dy * dy + dz * dz > SohVr::kMinDrawLength * SohVr::kMinDrawLength) {
+                SohVr::Vec3 from = SohVr::ToWorld(pouch, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
+                along = { projectile->world.pos.x - from.x, projectile->world.pos.y - from.y,
+                          projectile->world.pos.z - from.z };
+            }
+        }
         SohVr::FaceAlong(projectile, SohVr::Normalized(along));
         return;
     }
@@ -2733,6 +2937,11 @@ extern "C" bool Vr_HoldNut(Player* player, Actor* nut) {
     // While it has a parent the nut waits instead of flying off.
     nut->parent = &player->actor;
     SohVr::sHeldNut = nut;
+    // The game throws nuts straight from whatever Link holds, so it leaves that in his hand. Here the nut is held
+    // instead, so an item he held (the slingshot, say) is put away; a sword or stick stays drawn.
+    if ((player->heldItemAction != PLAYER_IA_NONE) && (Player_GetMeleeWeaponHeld(player) == 0)) {
+        SohVr::RequestItem(VR_REQUEST_PUT_AWAY);
+    }
     SPDLOG_INFO("[VR] Deku nut in hand; squeeze the grip and let go to throw it");
     return true;
 }

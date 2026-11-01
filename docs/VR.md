@@ -28,27 +28,29 @@ On first launch, give the game your ROM when it asks, the same as in regular Shi
 3. Under **Settings > Graphics**, set **Renderer API** to **DirectX 11**, then restart the game.
 4. Under **Settings > VR**, check **Enable VR**. The game appears in the headset within a few seconds; if no headset is found yet, it keeps checking.
 
-The other options on the VR page:
+The other options on the VR page are below. Most of them can also be changed in the headset: press Y, open the System section (the ship) and pick VR Settings (the compass).
 
 | Option | What it does |
 | - | - |
 | OpenXR Runtime | Auto uses SteamVR while it's running, and otherwise Windows' active OpenXR runtime. Turn VR off and on to apply a change. |
+| Seated Mode | For playing seated: lifts your view, and your hands with it, to a standing Link's eye height. It's measured when you turn it on and each time you recenter, so sit as you'll play and recenter. |
 | Your Height | Your real height. Link's height is mapped onto yours, so the world looks bigger when he's a child. |
 | Adult World Scale, Child World Scale | Scales the world further if people and doors look too small or too big. |
 | Pick Up Drops by Hand | Off (the default): you collect ammo and magic drops by walking into them, as in the game. On: you close a hand on them instead. |
 | Snap Turn | How far one flick of the right stick turns you; 0 turns smoothly. |
+| Movement Direction | Whether pushing the left stick forward moves you where you look or where your left hand points. |
 | Sword Hand | Link is left-handed. Choose Right to put the sword in your right hand instead. |
 | Hand Fine Tuning | Small rotation adjustments for each hand model. Leave these at 0 unless the hands look misaligned. |
 
 ## Playing
 
-Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on a fixed background (such as Link's house and the market) appear on a floating screen in front of you. There you play with the controller as a normal gamepad. Everywhere else you're in the world.
+The title screen's cutscene plays around you in 3D, seen from its own camera as it moves; press A or Start to skip it. File select, the pause menu, shops, and rooms drawn on a fixed background (such as Link's house and the market) appear on a floating screen in front of you. There you play with the controller as a normal gamepad. Everywhere else you're in the world, cutscenes included: they play out around you, seen through Link's eyes, and your hands don't act on the game until they're over.
 
 ### In the world
 
 | Control | What it does |
 | - | - |
-| Left stick | Walk, relative to where you're looking |
+| Left stick | Walk, relative to where you're looking (or where your left hand points; see Movement Direction) |
 | Walk around your room | Link walks too; walls stop you |
 | Right stick left/right | Turn |
 | Right stick down | L; talks to Navi when she has something to say |
@@ -56,7 +58,7 @@ Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on
 | Left stick click or Menu button | Pause |
 | A | Talk, open, climb, roll; while carrying something, put it down or throw it |
 | B | Advance text, and put the ocarina away |
-| Y | Open or close the item menu |
+| Y | Open or close the item menu, which also holds the pause menu and the VR settings |
 | Left trigger | Z-target |
 
 | To | Do this |
@@ -67,15 +69,17 @@ Title screens, file select, the pause menu, cutscenes, shops, and rooms drawn on
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it |
-| Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips; Link takes hold once he's up against it, so you can squeeze first and walk in. Move your hands or walk toward it to push, and back to pull; bring them back to stop. Let go to let go of it. A and the stick work too. |
+| Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips; Link takes hold once he's up against it, so you can squeeze first and walk in. Then push the stick forward while looking at it to push it, or while looking away from it to pull it. Let go to let go of it. A works too. |
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
-| Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go |
+| Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go. The shot flies from your drawing hand through the bow or the slingshot's arms, so pull lower to aim higher. |
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
-| Play the ocarina | A, X, Y and the right stick up and down are its notes |
+| Play the ocarina | A and the right stick (up, down, left, right) are its notes; X and Y also play C-left and C-right. The right stick doesn't turn you while the ocarina is up. |
+| Pause | Y, then the System section (the ship), then the map; or click the left stick |
+| Change VR settings | Y, then the System section (the ship), then the compass. Point at a row and pull the trigger: switches flip, and numbers go down on the row's left half and up on its right half, repeating while you hold. Y or Close puts it away. |
 
 The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
 

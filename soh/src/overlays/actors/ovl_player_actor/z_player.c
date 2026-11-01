@@ -8143,11 +8143,6 @@ s32 func_8083FD78(Player* this, f32* arg1, s16* arg2, PlayState* play) {
 }
 
 s32 func_8083FFB8(Player* this, f32* arg1, s16* arg2) {
-    s32 vrDirection;
-    // In VR a block held by hand is pushed and pulled with the hands.
-    if (Vr_BlockPushDirection(this, &vrDirection)) {
-        return vrDirection;
-    }
     s16 temp1 = *arg2 - this->actor.shape.rot.y;
     u16 temp2 = ABS(temp1);
     f32 temp3 = Math_CosS(temp2);
@@ -12518,7 +12513,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
 
     // Other actors draw with this too, so only the real player gets VR hands.
     // Aiming and crawling would swap in first-person arms or hide the hands, which in VR stay as they are.
-    if (Vr_IsWorldStereo() && (this == GET_PLAYER(play))) {
+    if (Vr_IsWorldStereo() && !Vr_ViewFromCamera() && (this == GET_PLAYER(play))) {
         sVrBaseOverrideLimbDraw = ((overrideLimbDraw == Player_OverrideLimbDrawGameplayFirstPerson) ||
                                    (overrideLimbDraw == Player_OverrideLimbDrawGameplayCrawling))
                                       ? Player_OverrideLimbDrawGameplayDefault
