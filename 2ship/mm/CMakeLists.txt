@@ -164,6 +164,11 @@ source_group("src\\overlays\\gamestates" REGULAR_EXPRESSION  "src/overlays/games
 source_group("src\\overlays\\misc" REGULAR_EXPRESSION  "src/overlays/misc/*")
 # }}}
 
+# The VR code both games build (the headset, the stereo renderer and the HUD), in vr/core at the repo's root. It
+# includes this game's own VrGame.h, from 2s2h/Enhancements/vr.
+file(GLOB vr__core CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../../vr/core/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/../../vr/core/*.h)
+source_group("vr/core" FILES ${vr__core})
+
 set(ALL_FILES
     ${Header_Files}
     ${Header_Files__include}
@@ -171,6 +176,7 @@ set(ALL_FILES
 	${libultra_headers}
     ${ship__Extractor}
     ${src__}
+    ${vr__core}
 )
 
 ################################################################################
@@ -229,6 +235,8 @@ if (BUILD_CROWD_CONTROL)
 endif()
 
 target_include_directories(${PROJECT_NAME} PRIVATE assets
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../vr/core/
+    ${CMAKE_CURRENT_SOURCE_DIR}/2s2h/Enhancements/vr/
 	${CMAKE_CURRENT_SOURCE_DIR}/include/
 	${CMAKE_CURRENT_SOURCE_DIR}/include/PR
 	${CMAKE_CURRENT_SOURCE_DIR}/src/
@@ -543,6 +551,7 @@ endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
     find_package(glfw3 REQUIRED)
+    find_package(OpenXR CONFIG REQUIRED)
 
     find_package(Ogg CONFIG REQUIRED)
     link_libraries(Ogg::ogg)
@@ -572,6 +581,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
         "Vorbis::vorbisenc"
         "Vorbis::vorbisfile"
 		"OpusFile::opusfile"
+        "OpenXR::headers"
+        "OpenXR::openxr_loader"
 	)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "NintendoSwitch")
     find_package(SDL2)

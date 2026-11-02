@@ -5,6 +5,7 @@
  */
 
 #include "global.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 #include "z64horse.h"
 #include "z64malloc.h"
 #include "z64quake.h"
@@ -13276,7 +13277,23 @@ Gfx* D_8085D574[] = {
 Color_RGB8 D_8085D580 = { 255, 255, 255 };
 Color_RGB8 D_8085D584 = { 80, 80, 200 };
 
+// In VR the player sees from inside Link: his draw still runs, so where his hands, sword and body are stays up to
+// date, but what it drew is taken back out.
+static void Player_DrawVanilla(Actor* thisx, PlayState* play);
+
 void Player_Draw(Actor* thisx, PlayState* play) {
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx* opa = gfxCtx->polyOpa.p;
+    Gfx* xlu = gfxCtx->polyXlu.p;
+
+    Player_DrawVanilla(thisx, play);
+    if (Vr_HidesLink((Player*)thisx)) {
+        gfxCtx->polyOpa.p = opa;
+        gfxCtx->polyXlu.p = xlu;
+    }
+}
+
+static void Player_DrawVanilla(Actor* thisx, PlayState* play) {
     Player* this = (Player*)thisx;
     f32 one = 1.0f;
     s32 spEC = false;

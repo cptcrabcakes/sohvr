@@ -3,6 +3,7 @@
 #include "z64view.h"
 #include "2s2h/Enhancements/FrameInterpolation/FrameInterpolation.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 s32 View_ApplyPerspective(View* view);
@@ -457,6 +458,7 @@ s32 View_ApplyPerspective(View* view) {
     gSPMatrix(POLY_OPA_DISP++, viewing, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
     gSPMatrix(POLY_XLU_DISP++, viewing, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
     FrameInterpolation_RecordCloseChild();
+    Vr_OnViewApplied(view, projection, viewing);
 
     CLOSE_DISPS(gfxCtx);
 

@@ -1,4 +1,5 @@
 #include "BenPort.h"
+#include "VrRender.h"
 #include <iostream>
 #include <algorithm>
 #include <filesystem>
@@ -787,6 +788,10 @@ ImFont* OTRGlobals::CreateDefaultFontWithSize(float size) {
 }
 
 uint32_t OTRGlobals::GetInterpolationFPS() {
+    // In VR every headset refresh gets an interpolated frame, whatever the frame rate setting says.
+    if (uint32_t vrFps = SohVr::GetRefreshRate()) {
+        return vrFps;
+    }
     if (CVarGetInteger("gMatchRefreshRate", 0)) {
         return Ship::Context::GetRawInstance()->GetWindow()->GetCurrentRefreshRate();
     } else if (CVarGetInteger(CVAR_VSYNC_ENABLED, 1) ||
@@ -1023,6 +1028,7 @@ extern "C" void SaveManager_ThreadPoolWait() {
 }
 
 extern "C" void DeinitOTR() {
+    SohVr::Shutdown();
     SaveManager_ThreadPoolWait();
     OTRAudio_Exit();
 #ifdef ENABLE_CROWD_CONTROL
@@ -1193,7 +1199,9 @@ void RunCommands(Gfx* Commands, int time, int step, int denom, int count) {
         std::unordered_map<Mtx*, MtxF> mtx_replacements =
             (time == denom) ? std::unordered_map<Mtx*, MtxF>() : FrameInterpolation_Interpolate((float)time / denom);
         intp->mInterpolationT = (float)time / denom;
-        wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
+        if (!SohVr::DrawFrame(wnd.get(), Commands, mtx_replacements)) {
+            wnd->DrawAndRunGraphicsCommands(Commands, mtx_replacements);
+        }
         intp->mInterpolationIndex++;
     }
     ImGui::PopStyleColor();
@@ -1207,6 +1215,7 @@ extern "C" void Graph_ProcessGfxCommands(Gfx* commands) {
     }
 
     audio.cv_to_thread.notify_one();
+    SohVr::OnTickSubmitted();
     int target_fps = OTRGlobals::Instance->GetInterpolationFPS();
     static int last_fps;
     static int last_update_rate;

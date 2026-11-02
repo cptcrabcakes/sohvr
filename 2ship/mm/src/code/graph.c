@@ -2,6 +2,7 @@
 #include "z64.h"
 #include "regs.h"
 #include "functions.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 #include "fault.h"
 #include <libultraship/bridge/gfxdebuggerbridge.h>
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -283,11 +284,14 @@ void Graph_ExecuteAndDraw(GraphicsContext* gfxCtx, GameState* gameState) {
         gSPDisplayList(gfx++, D_0E000000_TO_SEGMENTED(disps[3]));     // Work buffer
         gSPDisplayList(gfx++, D_0E000000_TO_SEGMENTED(disps[0]));     // OPA buffer
         gSPDisplayList(gfx++, D_0E000000_TO_SEGMENTED(disps[1]));     // XLU buffer
+        Gfx* vrOverlayCall = gfx;
         gSPDisplayList(gfx++, D_0E000000_TO_SEGMENTED(disps[2]));     // Overlay buffer
         gSPDisplayList(gfx++, D_0E000000_TO_SEGMENTED(debugDisp[0])); // Debug buffer
 
         gDPPipeSync(gfx++);
         gDPFullSync(gfx++);
+        // In VR, the eyes stop where the overlay is called and the HUD gets it on its own.
+        Vr_OnGraphBuilt(vrOverlayCall, gfxCtx->overlay.start, gfx);
         gSPEndDisplayList(gfx++);
     }
 

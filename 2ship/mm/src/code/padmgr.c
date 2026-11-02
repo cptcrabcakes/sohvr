@@ -40,6 +40,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "z64voice.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 // extern FaultMgr gFaultMgr;
 
 #define PADMGR_RETRACE_MSG (1 << 0)
@@ -623,6 +624,9 @@ void PadMgr_HandleRetrace(void) {
     if (sPadMgrInstance->isResetting) {
         memset(sPadMgrInstance->pads, 0, sizeof(sPadMgrInstance->pads));
     }
+
+    // The headset's controllers, in VR.
+    Vr_OverridePads(sPadMgrInstance->pads);
 
     // Query controller statuses
     osContStartQuery(serialEventQueue);

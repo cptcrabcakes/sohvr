@@ -669,6 +669,31 @@ void BenMenu::AddSettings() {
     path.column = SECTION_COLUMN_2;
     AddWidget(path, "Advanced Graphics Options", WIDGET_SEPARATOR_TEXT);
 
+    path.sidebarName = "VR";
+    path.column = SECTION_COLUMN_1;
+    AddSidebarEntry("Settings", "VR", 1);
+    AddWidget(path, "Enable VR", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSettings.VR.Enabled")
+        .Options(CheckboxOptions().Tooltip("Plays in an OpenXR headset (Quest Link, Steam Link, Virtual Desktop, "
+                                           "SteamVR). Needs the DirectX 11 renderer."));
+    AddWidget(path, "Seated Mode", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSettings.VR.Seated")
+        .Options(CheckboxOptions().Tooltip("Lifts your view to a standing eye height while you sit. It's measured "
+                                           "when this is turned on and each time you recenter (right stick click)."));
+    AddWidget(path, "Your Height: %d cm", WIDGET_CVAR_SLIDER_INT)
+        .CVar("gSettings.VR.PlayerHeight")
+        .Options(IntSliderOptions().Min(100).Max(220).DefaultValue(170).Tooltip(
+            "Link's height in each form is mapped onto yours, so the world grows around a Deku Scrub and shrinks "
+            "around the Fierce Deity."));
+    AddWidget(path, "World Scale: %d%%", WIDGET_CVAR_SLIDER_INT)
+        .CVar("gSettings.VR.WorldScale")
+        .Options(IntSliderOptions().Min(70).Max(150).DefaultValue(100).Tooltip(
+            "How big the world looks. Raise it if people and doors look too small."));
+    AddWidget(path, "Snap Turn: %d degrees", WIDGET_CVAR_SLIDER_INT)
+        .CVar("gSettings.VR.SnapTurn")
+        .Options(IntSliderOptions().Min(0).Max(90).DefaultValue(30).Tooltip(
+            "How far one flick of the right stick turns you. 0 turns smoothly instead."));
+
     path.sidebarName = "Controls";
     AddSidebarEntry("Settings", "Controls", 1);
     AddWidget(path, "Popout Bindings Window", WIDGET_WINDOW_BUTTON)

@@ -1,6 +1,7 @@
 #include "z64.h"
 #include "regs.h"
 #include "functions.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 #include "z64vismono.h"
 #include "z64visfbuf.h"
 #include <libultraship/bridge/consolevariablebridge.h>
@@ -1187,6 +1188,9 @@ void Play_DrawMain(PlayState* this) {
     Vec3f temp;
     u8 sp25B = false;
     f32 zFar;
+
+    // In VR the game's camera is aimed along the head before the view is set.
+    Vr_OnPlayDrawStart(this);
 
     // #region 2S2H [Port] Frame buffer effects for pause menu
     // Track render size when paused and that a copy was performed

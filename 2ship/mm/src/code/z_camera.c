@@ -44,6 +44,7 @@
  */
 
 #include "global.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 #include "libc/string.h"
 #include "z64malloc.h"
 #include "z64quake.h"
@@ -7944,6 +7945,11 @@ s16 Camera_GetInputDirPitch(Camera* camera) {
 }
 
 s16 Camera_GetInputDirYaw(Camera* camera) {
+    // In VR the stick walks Link relative to where the head looks.
+    s16 vrYaw;
+    if (Vr_GetInputDirYaw(&vrYaw)) {
+        return vrYaw;
+    }
     Vec3s dir = Camera_GetInputDir(camera);
 
     return dir.y;

@@ -94,6 +94,24 @@ The game's lessons on its buttons (what each item you find does, the Kokiri Fore
 
 The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. While the bow or slingshot is out, the arrows or seeds left show on the back of the hand holding it. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
 
+## Majora's Mask (early)
+
+`2ship/` holds Majora's Mask: 2Ship2Harkinian with the same VR core (`vr/core/`). So far it shows the world in stereo from Link's eyes, sized to whichever form he's in (towering as a Deku Scrub, small as the Fierce Deity), with the HUD and text on a panel ahead of you. The controllers work as a gamepad for now:
+
+| Control | What it does |
+| - | - |
+| Left stick | Walk, toward where you're looking |
+| Right stick left/right | Turn |
+| Right stick up/down | C-up / C-down |
+| Right stick click | Recenter |
+| A / B | A / B |
+| X / Y | C-left / C-right |
+| Left trigger | Z-target |
+| Right trigger | R (shield) |
+| Left stick click or Menu button | Start |
+
+To build it, check out the submodules (`git submodule update --init 2ship/libultraship 2ship/ZAPDTR 2ship/OTRExporter`), then follow `2ship/docs/BUILDING.md` from the `2ship` folder. Put your Majora's Mask ROM (the US N64 one) in `2ship/OTRExporter/` and build the `ExtractAssets` target to make `mm.o2r`, then copy `2ship.o2r` from `2ship/build/x64/mm/` next to `2ship.exe`. Turn VR on under Settings > VR.
+
 ## Known limitations
 
 This is a work in progress, and several parts of the game still use its original controls:

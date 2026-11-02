@@ -1,5 +1,6 @@
 #include "global.h"
 #include "2s2h/Enhancements/FrameInterpolation/FrameInterpolation.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 
 Mtx* sSkyboxDrawMatrix;
 
@@ -37,7 +38,13 @@ void Skybox_Draw(SkyboxContext* skyboxCtx, GraphicsContext* gfxCtx, s16 skyboxId
     Matrix_RotateXFApply(skyboxCtx->rot.x);
     Matrix_RotateYF(skyboxCtx->rot.y, MTXMODE_APPLY);
     Matrix_RotateZF(skyboxCtx->rot.z, MTXMODE_APPLY);
-    Matrix_ToMtx(sSkyboxDrawMatrix);
+    {
+        MtxF vrSkybox;
+        Matrix_Get(&vrSkybox);
+        Matrix_ToMtx(sSkyboxDrawMatrix);
+        // In VR each eye re-centers the sky on itself.
+        Vr_OnSkyboxDrawn(sSkyboxDrawMatrix, &vrSkybox);
+    }
     gSPMatrix(POLY_OPA_DISP++, sSkyboxDrawMatrix, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
     // Enable magic square RGB dithering and bilinear filtering
