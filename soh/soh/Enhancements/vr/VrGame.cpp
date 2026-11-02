@@ -1,5 +1,6 @@
 #include "VrGame.h"
 #include "VrItems.h"
+#include "VrOcarinaMic.h"
 #include "VrRuntime.h"
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -39,6 +40,10 @@ extern PlayState* gPlayState;
 #define CVAR_VR_SNAP_TURN CVAR_SETTING("VR.SnapTurn")         // degrees; 0 turns smoothly
 #define CVAR_VR_SEATED CVAR_SETTING("VR.Seated")
 #define CVAR_VR_HAND_MOVEMENT CVAR_SETTING("VR.HandMovement") // the stick moves along where the left hand points
+// Whether the ocarina listens for whistled, hummed or sung notes while it's up (see VrOcarinaMic.h).
+#define CVAR_VR_MIC_OCARINA CVAR_SETTING("VR.MicOcarina")
+// Whether ladders, climbable walls and ledges are climbed by pulling with the hands (see UpdateClimb).
+#define CVAR_VR_CLIMB_BY_HAND CVAR_SETTING("VR.ClimbByHand")
 // 0 keeps Link's hands on their own sides, so the sword is in the left hand like his; 1 swaps them.
 #define CVAR_VR_SWORD_IN_RIGHT_HAND CVAR_SETTING("VR.SwordInRightHand")
 // Extra rotation in degrees for each of Link's hand models, about the grip's X, Y and Z axes, for fine tuning.
@@ -585,6 +590,142 @@ void UpdateBlockGrip() {
     Runtime::Get().Vibrate(HAND_LEFT, 0.4f, 0.05f);
     Runtime::Get().Vibrate(HAND_RIGHT, 0.4f, 0.05f);
     SPDLOG_INFO("[VR] Took hold of a block with both hands");
+}
+
+// The note the microphone heard last tick, and its onset (see Vr_OverridePads).
+uint16_t sMicButton = 0;
+uint32_t sMicOnset = 0;
+
+// Climbing by hand. On a ladder or a climbable wall, a hand that closes its grip holds on, and pulling it down climbs
+// up, pushing it up climbs down and, on a wall, pulling it sideways climbs the other way: the stick the game climbs
+// by is set from how fast the holding hands move, so reaching up with one hand while the other pulls climbs hand
+// over hand. Hanging from a ledge, pulling up with a hand that holds on climbs onto it, and letting go of every hand
+// that held drops. Where the game offers to climb a low ledge, closing both hands and pulling climbs it. The stick
+// still climbs as before.
+constexpr float kClimbMinSpeed = 0.1f;  // meters a second a hand has to pull to climb
+constexpr float kClimbFullSpeed = 0.6f; // and at which Link climbs as fast as he can
+constexpr float kClimbStickMax = 67.0f; // the stick that gives the game's fastest climb
+constexpr float kLedgePull = 0.12f;     // meters to pull, holding on, to climb onto a ledge
+constexpr float kClimbSmoothing = 0.3f;
+struct ClimbHand {
+    bool holding = false;
+    float last[3] = {};
+    float pulled = 0.0f; // meters pulled down since taking hold
+};
+ClimbHand sClimbHands[HAND_COUNT];
+float sClimbStick[2] = {}; // x and y, in the game's stick units, while a hand holds on
+bool sClimbStickActive = false;
+bool sClimbHeldLedge = false; // a hand held on while hanging, so letting go drops
+
+bool Climbing(Player* player) {
+    return player->stateFlags1 &
+           (PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE);
+}
+
+void UpdateClimb() {
+    Runtime& runtime = Runtime::Get();
+    Player* player = GET_PLAYER(gPlayState);
+    bool onWall = player->stateFlags1 & PLAYER_STATE1_CLIMBING_LADDER;
+    bool hanging = (player->stateFlags1 & PLAYER_STATE1_HANGING_OFF_LEDGE) &&
+                   !(player->stateFlags1 & PLAYER_STATE1_CLIMBING_LEDGE);
+    bool climbOffered = player->stateFlags2 & PLAYER_STATE2_DO_ACTION_CLIMB;
+    uint32_t refresh = runtime.GetRefreshRate();
+    float dt = refresh > 0 ? 1.0f / refresh : 0.0f;
+    if (!CVarGetInteger(CVAR_VR_CLIMB_BY_HAND, 1) || dt == 0.0f || (!onWall && !hanging && !climbOffered)) {
+        for (ClimbHand& hand : sClimbHands) {
+            hand = {};
+        }
+        sClimbStickActive = false;
+        sClimbStick[0] = sClimbStick[1] = 0.0f;
+        sClimbHeldLedge = false;
+        return;
+    }
+
+    // Link's right on the wall he faces, in the play space.
+    Vec3 facing = FacingInPlay(player);
+    Vec3 right = { -facing.z, 0.0f, facing.x };
+    float up = 0.0f;
+    float side = 0.0f;
+    int holding = 0;
+    int pulledFar = 0;
+    for (int i = 0; i < HAND_COUNT; i++) {
+        const ControllerState& state = runtime.GetController(static_cast<Hand>(i));
+        ClimbHand& hand = sClimbHands[i];
+        if (!state.gripHeld || !state.gripPose.valid) {
+            hand.holding = false;
+            continue;
+        }
+        if (!hand.holding) {
+            hand.holding = true;
+            hand.pulled = 0.0f;
+            memcpy(hand.last, state.gripPose.position, sizeof(hand.last));
+            runtime.Vibrate(static_cast<Hand>(i), 0.3f, 0.03f);
+            continue;
+        }
+        float dx = state.gripPose.position[0] - hand.last[0];
+        float dy = state.gripPose.position[1] - hand.last[1];
+        float dz = state.gripPose.position[2] - hand.last[2];
+        memcpy(hand.last, state.gripPose.position, sizeof(hand.last));
+        // The body goes the other way to the hand that holds on.
+        up -= dy / dt;
+        side -= (dx * right.x + dz * right.z) / dt;
+        hand.pulled -= dy;
+        holding++;
+        if (hand.pulled >= kLedgePull) {
+            pulledFar++;
+        }
+    }
+
+    if (hanging) {
+        sClimbHeldLedge = sClimbHeldLedge || holding > 0;
+        if (pulledFar > 0) {
+            // Pushing the stick any way climbs up from a ledge.
+            sClimbStick[0] = 0.0f;
+            sClimbStick[1] = kClimbStickMax;
+            sClimbStickActive = true;
+            SPDLOG_INFO("[VR] Pulled up onto a ledge by hand");
+        } else if (sClimbHeldLedge && holding == 0 && !sClimbHands[HAND_LEFT].holding &&
+                   !sClimbHands[HAND_RIGHT].holding) {
+            sLatchedButtons |= BTN_A;
+            sClimbHeldLedge = false;
+            SPDLOG_INFO("[VR] Let go of a ledge");
+        } else {
+            sClimbStickActive = false;
+        }
+        return;
+    }
+    sClimbHeldLedge = false;
+
+    if (climbOffered && !onWall) {
+        sClimbStickActive = false;
+        if (pulledFar == HAND_COUNT) {
+            sLatchedButtons |= BTN_A;
+            for (ClimbHand& hand : sClimbHands) {
+                hand.pulled = 0.0f;
+            }
+            SPDLOG_INFO("[VR] Climbed a ledge by hand");
+        }
+        return;
+    }
+
+    if (holding == 0) {
+        sClimbStickActive = false;
+        sClimbStick[0] = sClimbStick[1] = 0.0f;
+        return;
+    }
+    up /= holding;
+    side /= holding;
+    auto stickFor = [](float speed) {
+        if (fabsf(speed) < kClimbMinSpeed) {
+            return 0.0f;
+        }
+        return copysignf(std::min(fabsf(speed) / kClimbFullSpeed, 1.0f) * kClimbStickMax, speed);
+    };
+    float target[2] = { stickFor(side), stickFor(up) };
+    for (int i = 0; i < 2; i++) {
+        sClimbStick[i] += (target[i] - sClimbStick[i]) * kClimbSmoothing;
+    }
+    sClimbStickActive = true;
 }
 
 bool sMenuInputsHeld = false;
@@ -2095,6 +2236,7 @@ void Game_OnFrame() {
         UpdateWorldGrabs();
         UpdateLiftGrab();
         UpdateBlockGrip();
+        UpdateClimb();
         UpdateMasks();
         UpdateBottle();
         UpdateFishing();
@@ -2108,7 +2250,9 @@ void Game_OnFrame() {
             const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
             bool pressedNow = state.gripHeld && !sSwordGripLatched[hand];
             sSwordGripLatched[hand] = state.gripHeld;
-            if (!pressedNow || sSwordGestureCooldown > 0.0f || !HandOverShoulder(state.gripPose)) {
+            // While climbing, a hand reaching up past the shoulder is reaching for the next hold.
+            if (!pressedNow || sSwordGestureCooldown > 0.0f || !HandOverShoulder(state.gripPose) ||
+                Climbing(GET_PLAYER(gPlayState))) {
                 continue;
             }
             bool drawn = SwordDrawn(GET_PLAYER(gPlayState));
@@ -2141,6 +2285,8 @@ void Game_OnFrame() {
         Items_Close();
         sBlockHeld = false;
     }
+
+    OcarinaMic_Listen(PlayingOcarina() && CVarGetInteger(CVAR_VR_MIC_OCARINA, 1));
 
     int snapDegrees = CVarGetInteger(CVAR_VR_SNAP_TURN, 30);
     // Up and down on the right stick are buttons, so only mostly-sideways pushes turn.
@@ -2410,9 +2556,28 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
         pads[0].stick_x = static_cast<int8_t>(lroundf(std::clamp(x, -1.0f, 1.0f) * SohVr::kStickRange));
         pads[0].stick_y = static_cast<int8_t>(lroundf(std::clamp(y, -1.0f, 1.0f) * SohVr::kStickRange));
     }
+    // A hand holding on while climbing climbs instead (see UpdateClimb).
+    if (SohVr::sClimbStickActive && Vr_IsWorldStereo()) {
+        pads[0].stick_x = static_cast<int8_t>(lroundf(SohVr::sClimbStick[0]));
+        pads[0].stick_y = static_cast<int8_t>(lroundf(SohVr::sClimbStick[1]));
+    }
     // Buttons pressed and released between two game ticks still count.
     pads[0].button |= SohVr::sLatchedButtons | SohVr::CurrentButtons();
     SohVr::sLatchedButtons = 0;
+
+    // A whistled, hummed or sung note presses its button, and how far off it is bends the ocarina as the stick's up
+    // and down do, two semitones at most each way. The game only plays a note on a new press, so the same note
+    // started again is let go for a tick first.
+    if (SohVr::PlayingOcarina()) {
+        SohVr::MicNote heard = SohVr::OcarinaMic_Current();
+        bool again = heard.onset != SohVr::sMicOnset && heard.button == SohVr::sMicButton;
+        SohVr::sMicOnset = heard.onset;
+        if (heard.button != 0 && !again) {
+            pads[0].button |= heard.button;
+            pads[0].stick_y = static_cast<int8_t>(std::clamp(lroundf(heard.bend * 32.0f), -64L, 64L));
+        }
+        SohVr::sMicButton = again ? 0 : heard.button;
+    }
 
     if (Vr_IsWorldStereo()) {
         SohVr::Items_ApplyPending();

@@ -8,6 +8,16 @@ HAS ONLY BEEN TESTED WITH A QUEST 3 ON STEAM AIR LINK
 
 How to build it, turn VR on and change its settings is in **[docs/VR.md](docs/VR.md)**.
 
+## Why this one?
+
+There are other good ways to play these games in VR, and they're well worth a look: [ShinyWindow's Ship of Harkinian VR](https://github.com/ShinyWindow/Shipwright-VR) and [ChocoTorp's standalone Quest 3 port](https://github.com/ChocoTorp/Shipwright-VR) of it for Ocarina of Time, and [Full Dive Games' Majora's Mask VR](https://github.com/fulldivegames/Majoras-Mask-VR). Thanks to all of them for showing what these games can be in a headset. What this one sets out to do differently:
+
+* **Play the ocarina with your own voice.** Whistle, hum or sing its notes into your headset's microphone, and your pitch bends the note as you go.
+* **Everything is in your hands, nothing is in a menu.** Every item, sword, shield, tunic and pair of boots is on one item wheel, and so are the pause menu and the VR settings, so you never stop to dig through the inventory screen.
+* **The world reacts to your hands.** Push and pull doors open, lift chest lids, take hold of blocks with both hands, and carry pots and rocks in one hand or two.
+* **You're Link, start to finish.** The title screen plays around you in 3D, cutscenes play out in the world through Link's eyes, and what you find is held up in your own hands.
+* **Seated or standing.** Seated mode lifts your view to a standing Link's eye height.
+
 ## Tries to turn OOT into a AAA VR Game. Revamped UI, and items are now fully 6DoF interactable.
 
 The item wheel: press Y
@@ -41,6 +51,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both. |
 | Throw | Swing and let go of the grip; a slow release sets it down. Carried in both hands, let go of both together to throw with both. |
+| Climb | On a ladder, vine or climbable wall, close a hand to hold on and pull down to climb, hand over hand; pull sideways to move along a wall. Hanging from a ledge, pull up to climb onto it, or let go to drop. Where A says Climb, grab the ledge with both hands and pull. |
 | Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips, then push the stick forward while looking at it to push, or while looking away to pull |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift |
 | Fire the bow or slingshot | With your other hand at the bow, pull its trigger, draw back and let go. Pull lower to aim higher. |
@@ -48,7 +59,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
-| Play the ocarina | A and the right stick are its notes; X and Y play C-left and C-right |
+| Play the ocarina | Whistle, hum or sing its notes into your headset's microphone; your pitch bends the note. A and the right stick play them too, and X and Y play C-left and C-right. |
 
 ## Buttons
 

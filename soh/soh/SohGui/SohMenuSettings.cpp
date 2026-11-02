@@ -562,6 +562,18 @@ void SohMenu::AddMenuSettings() {
         .Options(CheckboxOptions().DefaultValue(false).Tooltip(
             "Ammo and magic drops are picked up by closing a hand on them. Off, they're collected by walking into "
             "them, as rupees and hearts are."));
+    AddWidget(path, "Whistle Ocarina Notes", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.MicOcarina"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "While the ocarina is up, whistle, hum or sing its notes into your headset's microphone. Your pitch "
+            "bends the note, as the stick does. The microphone is only open while the ocarina is out."));
+    AddWidget(path, "Climb by Hand", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.ClimbByHand"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "On ladders, vines and climbable walls, close a hand to hold on and pull to climb, hand over hand. "
+            "Hanging from a ledge, pull up to climb onto it or let go to drop. The stick climbs too."));
     AddWidget(path, "Snap Turn: %d degrees", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_SETTING("VR.SnapTurn"))
         .RaceDisable(false)

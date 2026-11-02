@@ -520,7 +520,7 @@ void Choose(const Entry& entry) {
 constexpr int kPanelX = 60;
 constexpr int kPanelY = 36;
 constexpr int kPanelW = 200;
-constexpr int kPanelH = 172;
+constexpr int kPanelH = 200;
 constexpr int kPanelFirstRow = 62;     // y of the first row's text
 constexpr int kPanelRowStep = 14;
 constexpr float kPanelWidth = 0.55f;   // meters, in the world
@@ -567,6 +567,9 @@ const PanelRow kPanelRows[] = {
     SwitchRow("MOVEMENT", CVAR_SETTING("VR.HandMovement"), "HEAD", "HAND"),
     SwitchRow("SWORD HAND", CVAR_SETTING("VR.SwordInRightHand"), "LEFT", "RIGHT"),
     SwitchRow("GRAB DROPS", CVAR_SETTING("VR.GrabDrops")),
+    // On unless turned off, like the menu's checkboxes.
+    { "WHISTLE NOTES", RowKind::Switch, CVAR_SETTING("VR.MicOcarina"), 1, 0, 1, 1, "OFF", "ON", "", nullptr },
+    { "CLIMB BY HAND", RowKind::Switch, CVAR_SETTING("VR.ClimbByHand"), 1, 0, 1, 1, "OFF", "ON", "", nullptr },
     ActionRow("RECENTER VIEW", RowKind::Recenter),
     ActionRow("CLOSE", RowKind::Close),
 };

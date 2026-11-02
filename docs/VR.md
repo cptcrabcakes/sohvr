@@ -69,6 +69,7 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. The first ring's groups: Ranged & Tools, Explosives & Heavy, Magic & Spells (with the magic arrows), Bottles & Consumables, Quest & Lore, Equipment & Gear, and System (the ship). |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both; let go with one and the other keeps it. |
+| Climb | On a ladder, vine or climbable wall, close a hand to hold on and pull down to climb, hand over hand: reach up with one hand while the other pulls. Push down to climb down, and pull sideways to move along a wall. Hanging from a ledge, pull up with a hand that holds on to climb onto it, or let go of it to drop. Where A says Climb, grab the ledge with both hands and pull. The stick climbs too; Climb by Hand turns this off. |
 | Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips; Link takes hold once he's up against it, so you can squeeze first and walk in. Then push the stick forward while looking at it to push it, or while looking away from it to pull it. Let go to let go of it. A works too. |
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down. Carried in both hands, swing both and let go of both together to throw it with both. |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
@@ -77,7 +78,7 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
-| Play the ocarina | A and the right stick (up, down, left, right) are its notes; X and Y also play C-left and C-right. The right stick doesn't turn you while the ocarina is up. |
+| Play the ocarina | Whistle, hum or sing its notes (D, F, A, B and the high D) into your headset's microphone, in any octave; how far off the note you are bends it, as the stick does. A note started again after a breath plays again. A and the right stick (up, down, left, right) play the notes too, and X and Y also play C-left and C-right. The right stick doesn't turn you while the ocarina is up. The microphone is only open while the ocarina is out; Whistle Ocarina Notes turns it off. |
 | Pause | Y, then the System section (the ship), then the map; or click the left stick |
 | Change VR settings | Y, then the System section (the ship), then the compass. Point at a row and pull the trigger: switches flip, and numbers go down on the row's left half and up on its right half, repeating while you hold. Y or Close puts it away. |
 
@@ -90,8 +91,7 @@ This is a work in progress, and several parts of the game still use its original
 * Magic spells play their usual casting scenes.
 * The pause menu is the original one on the floating screen, navigated with the stick.
 * The Lens of Truth's view is drawn into each eye as the game draws it, which may look odd.
-* The ocarina is played with buttons, not held to your mouth.
-* Ladders and ledges are climbed with the stick and A, not by hand.
+* The ocarina plays wherever you hold it; it doesn't need to be at your mouth yet.
 * Some interactions haven't been tried everywhere in the game, so expect rough edges.
 
 The VR code is in [soh/soh/Enhancements/vr](../soh/soh/Enhancements/vr). Where the game's own code was changed, it calls into the VR code through functions named `Vr_...`.
