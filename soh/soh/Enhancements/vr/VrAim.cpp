@@ -173,6 +173,11 @@ bool FlyShot(PlayState* play, Vec3f origin, Vec3f direction, bool seed, float po
 
 } // namespace
 
+void Aim_DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, float width,
+                  Color_RGBA8 color) {
+    DrawRing(play, center, normal, radius, width, color);
+}
+
 void Aim_DrawShotMarker(PlayState* play, Player* player) {
     bool marker = CVarGetInteger(CVAR_VR_SHOT_MARKER, 1);
     bool pathShown = CVarGetInteger(CVAR_VR_SHOT_PATH, 0);

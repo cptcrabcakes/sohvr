@@ -76,6 +76,9 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
 | Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go. The shot flies from your drawing hand through the bow or the slingshot's arms, so pull lower to aim higher, and the further you draw, the faster and further it flies. While it's drawn, a ring shows where it will land (Bow Landing Marker), and dots can show its path (Bow Flight Path). |
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire. A laser shows where it would catch: green where it will hook, red where it would bounce off. |
+| Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
+| Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
+| See through the Lens of Truth | Take it from the wheel and hold it up to your eye; it's on, spending magic, only while it's there |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
@@ -89,7 +92,7 @@ The hearts, magic, rupees and keys are on the back of your left wrist, and the A
 
 This is a work in progress, and several parts of the game still use its original controls:
 
-* Magic spells play their usual casting scenes.
+* Spells still play their usual casting scenes once cast.
 * The pause menu is the original one on the floating screen, navigated with the stick.
 * The Lens of Truth's view is drawn into each eye as the game draws it, which may look odd.
 * The ocarina plays wherever you hold it; it doesn't need to be at your mouth yet.

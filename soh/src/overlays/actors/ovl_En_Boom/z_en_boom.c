@@ -124,16 +124,21 @@ void EnBoom_Fly(EnBoom* this, PlayState* play) {
 
     player = GET_PLAYER(play);
     target = this->moveTo;
+    // In VR it comes back to the hand that threw it, which catches it.
+    Vec3f vrHand;
+    s32 toVrHand = Vr_BoomerangCatchPoint(&vrHand);
 
     // If the boomerang is moving toward a targeted actor, handle setting the proper x and y angle to fly toward it.
     if (target != NULL) {
-        yawTarget = Actor_WorldYawTowardPoint(&this->actor, &target->focus.pos);
+        Vec3f* aimAt = (toVrHand && (target == &player->actor)) ? &vrHand : &target->focus.pos;
+
+        yawTarget = Actor_WorldYawTowardPoint(&this->actor, aimAt);
         yawDiff = this->actor.world.rot.y - yawTarget;
 
-        pitchTarget = Actor_WorldPitchTowardPoint(&this->actor, &target->focus.pos);
+        pitchTarget = Actor_WorldPitchTowardPoint(&this->actor, aimAt);
         pitchDiff = this->actor.world.rot.x - pitchTarget;
 
-        distXYZScale = (200.0f - Math_Vec3f_DistXYZ(&this->actor.world.pos, &target->focus.pos)) * 0.005f;
+        distXYZScale = (200.0f - Math_Vec3f_DistXYZ(&this->actor.world.pos, aimAt)) * 0.005f;
         if (distXYZScale < 0.12f) {
             distXYZScale = 0.12f;
         }
@@ -169,11 +174,12 @@ void EnBoom_Fly(EnBoom* this, PlayState* play) {
     // Decrement the return timer and check if it's 0. If it is, check if Link can catch it and handle accordingly.
     // Otherwise handle grabbing and colliding.
     if (DECR(this->returnTimer) == 0 || player->boomerangQuickRecall) {
-        distFromLink = Math_Vec3f_DistXYZ(&this->actor.world.pos, &player->actor.focus.pos);
+        distFromLink = Math_Vec3f_DistXYZ(&this->actor.world.pos, toVrHand ? &vrHand : &player->actor.focus.pos);
         this->moveTo = &player->actor;
 
-        // If the boomerang is less than 40 units away from Link, he can catch it.
-        if (distFromLink < 40.0f || player->boomerangQuickRecall) {
+        // If the boomerang is less than 40 units away from Link, he can catch it. In VR it has to reach his hand.
+        if (distFromLink < (toVrHand ? 20.0f : 40.0f) || player->boomerangQuickRecall) {
+            Vr_BoomerangCaught();
             target = this->grabbed;
             if (target != NULL) {
                 Math_Vec3f_Copy(&target->world.pos, &player->actor.world.pos);

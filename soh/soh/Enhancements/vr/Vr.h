@@ -157,6 +157,10 @@ bool Vr_TakeThrowRequest(void);
 bool Vr_TakeBoomerangThrow(Vec3f* from);
 // Gives a thrown actor the speed and direction the hand had when the grip let go. Leaves button throws alone.
 void Vr_ThrowWithHand(Player* player, Actor* thrown);
+// Where a returning boomerang flies to and is caught: the hand that threw it. False outside VR, where it's Link.
+bool Vr_BoomerangCatchPoint(Vec3f* point);
+// The boomerang was just caught.
+void Vr_BoomerangCaught(void);
 // Gives an arrow or seed just shot the speed its draw gave it (see Game_ShotAim). Called after the game sets it.
 void Vr_ScaleShotSpeed(Actor* shot);
 // Draws the hookshot's laser to where it would catch and a ring there, green if it will hook (see VrAim.cpp).

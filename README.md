@@ -57,6 +57,9 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift |
 | Fire the bow or slingshot | With your other hand at the bow, pull its trigger, draw back and let go. Pull lower to aim higher, and further for a faster, longer shot. A ring shows where it will land. |
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire. Its laser turns green where it will hook. |
+| Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
+| Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
+| See through the Lens of Truth | Take it from the wheel and hold it up to your eye |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |

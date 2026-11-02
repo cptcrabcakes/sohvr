@@ -11,5 +11,8 @@ namespace SohVr {
 
 // Draws the landing marker (and, if turned on, the flight path) of the bow or slingshot shot being drawn.
 void Aim_DrawShotMarker(PlayState* play, Player* player);
+// A flat, see-through ring around a point, facing along normal (game units).
+void Aim_DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, float width,
+                  Color_RGBA8 color);
 
 } // namespace SohVr

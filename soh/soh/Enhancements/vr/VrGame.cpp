@@ -612,6 +612,25 @@ void UpdateBlockGrip() {
     SPDLOG_INFO("[VR] Took hold of a block with both hands");
 }
 
+// Spells (Din's Fire, Farore's Wind, Nayru's Love) taken from the wheel are readied, glowing between the hands in the
+// spell's color, and cast by holding both triggers for the cast time (seconds). Letting go sooner casts nothing and
+// spends no magic. Taking anything else from the wheel puts the spell away.
+constexpr float kSpellCastTime = 0.6f;
+u8 sReadySpell = ITEM_NONE;
+float sSpellCharge = 0.0f;
+
+bool IsSpell(u8 item) {
+    return item == ITEM_DINS_FIRE || item == ITEM_FARORES_WIND || item == ITEM_NAYRUS_LOVE;
+}
+
+// The Lens of Truth taken from the wheel is held in that hand, and the world is seen through it while it's held up
+// to the face: the game's lens turns on there, spending magic as it does, and off when the hand comes away. It's
+// tried again no sooner than the retry time (seconds), so running out of magic doesn't buzz every frame.
+constexpr float kLensRetryTime = 1.0f;
+bool sHoldingLens = false;
+Hand sLensHand = HAND_RIGHT;
+float sLensRetry = 0.0f;
+
 // The note the microphone heard last tick, and its onset (see Vr_OverridePads).
 uint16_t sMicButton = 0;
 uint32_t sMicOnset = 0;
@@ -817,7 +836,7 @@ u16 CurrentButtons() {
         buttons |= left.primary ? BTN_CLEFT : 0;
         buttons |= left.secondary ? BTN_CRIGHT : 0;
     }
-    buttons |= (left.triggerHeld && !triggerTaken[HAND_LEFT]) ? BTN_Z : 0;
+    buttons |= (left.triggerHeld && !triggerTaken[HAND_LEFT] && sReadySpell == ITEM_NONE) ? BTN_Z : 0;
     buttons |= sBlockHeld ? BTN_A : 0;
     // A spin attack charges for as long as the sword hand's grip stays squeezed, as B held does.
     if ((GET_PLAYER(gPlayState)->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK) &&
@@ -1979,6 +1998,90 @@ void DrawHandItem(PlayState* play, Player* player, LinkHand hand) {
 }
 
 // A mask in hand, held by its middle with its face out along where the hand points, about 25 cm across.
+void UpdateSpell() {
+    if (sReadySpell == ITEM_NONE) {
+        return;
+    }
+    Runtime& runtime = Runtime::Get();
+    uint32_t refresh = runtime.GetRefreshRate();
+    float dt = refresh > 0 ? 1.0f / refresh : 0.0f;
+    if (!runtime.GetController(HAND_LEFT).triggerHeld || !runtime.GetController(HAND_RIGHT).triggerHeld) {
+        sSpellCharge = 0.0f;
+        return;
+    }
+    sSpellCharge += dt;
+    float share = std::min(sSpellCharge / kSpellCastTime, 1.0f);
+    runtime.Vibrate(HAND_LEFT, 0.2f + 0.6f * share, 0.02f);
+    runtime.Vibrate(HAND_RIGHT, 0.2f + 0.6f * share, 0.02f);
+    if (sSpellCharge >= kSpellCastTime) {
+        RequestItem(sReadySpell);
+        SPDLOG_INFO("[VR] Cast spell {} with both hands", sReadySpell);
+        sReadySpell = ITEM_NONE;
+        sSpellCharge = 0.0f;
+    }
+}
+
+void UpdateLens() {
+    if (!sHoldingLens) {
+        return;
+    }
+    Runtime& runtime = Runtime::Get();
+    uint32_t refresh = runtime.GetRefreshRate();
+    sLensRetry = std::max(sLensRetry - (refresh > 0 ? 1.0f / refresh : 0.0f), 0.0f);
+    bool atFace = HandAtFace(runtime.GetController(sLensHand).gripPose);
+    bool on = gPlayState->actorCtx.lensActive;
+    if (atFace != on && sLensRetry == 0.0f && (on || gSaveContext.magic > 0)) {
+        // Using the lens again turns it on or off.
+        RequestItem(ITEM_LENS);
+        sLensRetry = kLensRetryTime;
+        runtime.Vibrate(sLensHand, 0.3f, 0.03f);
+    }
+}
+
+// The readied spell's glow, between the hands and facing the head, growing as it's cast.
+void DrawReadySpell(PlayState* play) {
+    if (sReadySpell == ITEM_NONE) {
+        return;
+    }
+    const Runtime& runtime = Runtime::Get();
+    const Pose& left = runtime.GetController(HAND_LEFT).gripPose;
+    const Pose& right = runtime.GetController(HAND_RIGHT).gripPose;
+    const Pose& head = runtime.GetHead();
+    if (!left.valid || !right.valid || !head.valid) {
+        return;
+    }
+    float middle[3];
+    for (int i = 0; i < 3; i++) {
+        middle[i] = (left.position[i] + right.position[i]) * 0.5f;
+    }
+    Vec3 center = ToWorld(middle, sBuild.anchor, sBuild.unitsPerMeter);
+    Vec3 eye = ToWorld(head.position, sBuild.anchor, sBuild.unitsPerMeter);
+    Color_RGBA8 color = sReadySpell == ITEM_DINS_FIRE      ? Color_RGBA8{ 255, 110, 40, 200 }
+                        : sReadySpell == ITEM_FARORES_WIND ? Color_RGBA8{ 90, 255, 120, 200 }
+                                                           : Color_RGBA8{ 110, 170, 255, 200 };
+    float share = std::min(sSpellCharge / kSpellCastTime, 1.0f);
+    float radius = sBuild.unitsPerMeter * (0.05f + 0.07f * share);
+    Aim_DrawRing(play, { center.x, center.y, center.z }, { eye.x - center.x, eye.y - center.y, eye.z - center.z },
+                 radius, radius * 0.3f, color);
+}
+
+// The Lens of Truth in the hand that took it.
+void DrawHeldLens(PlayState* play) {
+    if (!sHoldingLens) {
+        return;
+    }
+    HandItem lens = { GID_LENS, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, 240.0f };
+    LinkHand hand = (ControllerFor(LINK_LEFT) == sLensHand) ? LINK_LEFT : LINK_RIGHT;
+    MtxF m;
+    if (!HandItemMatrix(GET_PLAYER(play), hand, &lens, m)) {
+        return;
+    }
+    Matrix_Push();
+    Vr_PutWorldMatrix(&m);
+    GetItem_Draw(play, lens.model);
+    Matrix_Pop();
+}
+
 void DrawHeldMask(PlayState* play) {
     if (sHeldMask == ITEM_NONE) {
         return;
@@ -2357,6 +2460,8 @@ void Game_OnFrame() {
         UpdateBlockGrip();
         UpdateClimb();
         UpdateSpinAttack();
+        UpdateSpell();
+        UpdateLens();
         UpdateMasks();
         UpdateBottle();
         UpdateFishing();
@@ -2526,9 +2631,25 @@ void Game_TakeItem(uint8_t item, Hand hand, int8_t slot) {
     sHeldMask = ITEM_NONE;
     sBottleOnButton = false;
     sBottleContent = ITEM_NONE;
+    sReadySpell = ITEM_NONE;
+    sHoldingLens = false;
     // A mask goes into the hand, to be put on by bringing it to the face. On the floating screen there's no face
-    // to bring it to, so choosing it puts it on, as its button did.
+    // to bring it to, so choosing it puts it on, as its button did. Spells and the lens are the same.
     bool physical = !ScreenGameplay();
+    if (physical && IsSpell(item)) {
+        sReadySpell = item;
+        sSpellCharge = 0.0f;
+        Runtime::Get().Vibrate(HAND_LEFT, 0.3f, 0.05f);
+        Runtime::Get().Vibrate(HAND_RIGHT, 0.3f, 0.05f);
+        return;
+    }
+    if (physical && item == ITEM_LENS) {
+        sHoldingLens = true;
+        sLensHand = hand;
+        sLensRetry = 0.0f;
+        Runtime::Get().Vibrate(hand, 0.3f, 0.04f);
+        return;
+    }
     if (physical && item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH) {
         sHeldMask = item;
         sMaskHand = hand;
@@ -2796,6 +2917,8 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
         SohVr::DrawHandItem(play, player, SohVr::LINK_LEFT);
         SohVr::DrawHandItem(play, player, SohVr::LINK_RIGHT);
         SohVr::DrawHeldMask(play);
+        SohVr::DrawHeldLens(play);
+        SohVr::DrawReadySpell(play);
         DrawAmmoCounter(play);
         SohVr::Aim_DrawShotMarker(play, player);
     }
@@ -3082,6 +3205,26 @@ extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
         }
     }
     return live;
+}
+
+extern "C" bool Vr_BoomerangCatchPoint(Vec3f* point) {
+    if (!Vr_IsWorldStereo()) {
+        return false;
+    }
+    const SohVr::Pose& grip =
+        SohVr::Runtime::Get().GetController(SohVr::ControllerFor(SohVr::LINK_LEFT)).gripPose;
+    if (!grip.valid) {
+        return false;
+    }
+    SohVr::Vec3 hand = SohVr::ToWorld(grip.position, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
+    *point = { hand.x, hand.y, hand.z };
+    return true;
+}
+
+extern "C" void Vr_BoomerangCaught(void) {
+    if (Vr_IsWorldStereo()) {
+        SohVr::Runtime::Get().Vibrate(SohVr::ControllerFor(SohVr::LINK_LEFT), 0.6f, 0.06f);
+    }
 }
 
 extern "C" bool Vr_TakeSpinCharge(Player* player) {
