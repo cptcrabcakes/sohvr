@@ -5,7 +5,7 @@
 
 extern "C" Gfx* Vr_WhiteBackgroundList(Gfx* overlay);
 
-#include "soh/cvar_prefixes.h"
+#include "VrCvars.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <fast/Fast3dWindow.h>
 #include <fast/interpreter.h>

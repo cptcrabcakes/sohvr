@@ -41,7 +41,7 @@
 #include "soh/Enhancements/savestates.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
 #include "frame_interpolation.h"
-#include "Enhancements/vr/VrRender.h"
+#include "VrRender.h"
 #include "SohGui/SohMenu.h"
 #include "SohGui/SohGui.hpp"
 #include "variables.h"

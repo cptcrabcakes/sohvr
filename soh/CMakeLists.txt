@@ -215,12 +215,18 @@ source_group("src\\overlays\\gamestates" REGULAR_EXPRESSION  "src/overlays/games
 source_group("src\\overlays\\misc" REGULAR_EXPRESSION  "src/overlays/misc/*")
 # }}}
 
+# The VR code both games build (the headset, the stereo renderer and the HUD), in vr/core at the repo's root. It
+# includes the game's own VrGame.h, from soh/Enhancements/vr.
+file(GLOB vr__core CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/vr/core/*.cpp ${CMAKE_SOURCE_DIR}/vr/core/*.h)
+source_group("vr/core" FILES ${vr__core})
+
 set(ALL_FILES
     ${Header_Files}
     ${Header_Files__include}
     ${soh__}
     ${soh__Extractor}
     ${src__}
+    ${vr__core}
 )
 
 ################################################################################
@@ -320,6 +326,8 @@ target_include_directories(${PROJECT_NAME} PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include/
     ${CMAKE_CURRENT_SOURCE_DIR}/src/
     ${CMAKE_CURRENT_SOURCE_DIR}/assets/
+    ${CMAKE_SOURCE_DIR}/vr/core/
+    ${CMAKE_CURRENT_SOURCE_DIR}/soh/Enhancements/vr/
     .
 )
 
