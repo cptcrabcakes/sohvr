@@ -6,3 +6,12 @@
 	path = torch
 	url = https://github.com/HarbourMasters/Torch.git
 	branch = main
+[submodule "2ship/libultraship"]
+	path = 2ship/libultraship
+	url = https://github.com/kenix3/libultraship.git
+[submodule "2ship/ZAPDTR"]
+	path = 2ship/ZAPDTR
+	url = https://github.com/HarbourMasters/ZAPDTR.git
+[submodule "2ship/OTRExporter"]
+	path = 2ship/OTRExporter
+	url = https://github.com/HarbourMasters/OTRExporter.git
