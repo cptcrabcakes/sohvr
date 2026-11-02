@@ -195,6 +195,8 @@ struct Runtime::Impl {
     XrAction hapticAction = XR_NULL_HANDLE;
     XrSpace gripSpaces[HAND_COUNT] = {};
     XrSpace aimSpaces[HAND_COUNT] = {};
+    // The controller extensions turned on (see CreateInstance).
+    std::vector<std::string> controllerExtensions;
 
     bool CreateInstance();
     bool CheckAdapter();
@@ -227,6 +229,14 @@ bool Runtime::Impl::CreateInstance() {
     std::vector<const char*> extensions = { XR_KHR_D3D11_ENABLE_EXTENSION_NAME };
     if (HasExtension(available, XR_EXT_LOCAL_FLOOR_EXTENSION_NAME)) {
         extensions.push_back(XR_EXT_LOCAL_FLOOR_EXTENSION_NAME);
+    }
+    // Controllers some runtimes only take bindings for behind their own extension (see CreateActions).
+    for (const char* controllers : { "XR_EXT_hp_mixed_reality_controller", "XR_EXT_samsung_odyssey_controller",
+                                     "XR_BD_controller_interaction", "XR_HTC_vive_focus3_controller_interaction" }) {
+        if (HasExtension(available, controllers)) {
+            extensions.push_back(controllers);
+            controllerExtensions.push_back(controllers);
+        }
     }
 
     XrInstanceCreateInfo createInfo{ XR_TYPE_INSTANCE_CREATE_INFO };
@@ -436,35 +446,108 @@ bool Runtime::Impl::CreateActions() {
     aimPoseAction = CreateAction(XR_ACTION_TYPE_POSE_INPUT, "aim_pose", "Hand aim", true);
     hapticAction = CreateAction(XR_ACTION_TYPE_VIBRATION_OUTPUT, "haptic", "Vibration", true);
 
-    std::vector<XrActionSuggestedBinding> bindings;
-    auto bind = [&](XrAction action, const char* path) {
-        XrPath xrPath = XR_NULL_PATH;
-        xrStringToPath(instance, path, &xrPath);
-        bindings.push_back({ action, xrPath });
+    // Bindings for every kind of controller the PC runtimes know, so the same controls work whichever headset is
+    // used: the runtime picks the profile that matches what's in the player's hands. What each one lacks is left
+    // out: the Index has no menu button (the left stick click pauses), and the Vive wands' trackpad is their stick
+    // and their trackpad click A or X, with the menu button as B or Y; there, pausing and recentering are on the
+    // item wheel and the VR settings. A profile the runtime refuses only loses that controller.
+    struct Layout {
+        const char* profile;
+        const char* extension; // needed for the runtime to know it, or nullptr
+        const char* stick;
+        const char* squeeze;
+        const char* stickClick; // or nullptr
+        const char* primary[HAND_COUNT];
+        const char* secondary[HAND_COUNT];
+        const char* menu; // on the left hand, or nullptr
     };
-    for (const char* hand : { "/user/hand/left", "/user/hand/right" }) {
-        std::string h = hand;
-        bind(stickAction, (h + "/input/thumbstick").c_str());
-        bind(triggerAction, (h + "/input/trigger/value").c_str());
-        bind(gripAction, (h + "/input/squeeze/value").c_str());
-        bind(stickClickAction, (h + "/input/thumbstick/click").c_str());
-        bind(gripPoseAction, (h + "/input/grip/pose").c_str());
-        bind(aimPoseAction, (h + "/input/aim/pose").c_str());
-        bind(hapticAction, (h + "/output/haptic").c_str());
+    const Layout layouts[] = {
+        { "/interaction_profiles/oculus/touch_controller", nullptr, "thumbstick", "squeeze/value", "thumbstick/click",
+          { "x/click", "a/click" }, { "y/click", "b/click" }, "menu/click" },
+        { "/interaction_profiles/valve/index_controller", nullptr, "thumbstick", "squeeze/value", "thumbstick/click",
+          { "a/click", "a/click" }, { "b/click", "b/click" }, nullptr },
+        { "/interaction_profiles/htc/vive_controller", nullptr, "trackpad", "squeeze/click", nullptr,
+          { "trackpad/click", "trackpad/click" }, { "menu/click", "menu/click" }, nullptr },
+        { "/interaction_profiles/microsoft/motion_controller", nullptr, "thumbstick", "squeeze/click",
+          "thumbstick/click", { "trackpad/click", "trackpad/click" }, { "menu/click", "menu/click" }, nullptr },
+        { "/interaction_profiles/hp/mixed_reality_controller", "XR_EXT_hp_mixed_reality_controller", "thumbstick",
+          "squeeze/value", "thumbstick/click", { "x/click", "a/click" }, { "y/click", "b/click" }, "menu/click" },
+        { "/interaction_profiles/samsung/odyssey_controller", "XR_EXT_samsung_odyssey_controller", "thumbstick",
+          "squeeze/click", "thumbstick/click", { "trackpad/click", "trackpad/click" }, { "menu/click", "menu/click" },
+          nullptr },
+        { "/interaction_profiles/bytedance/pico4_controller", "XR_BD_controller_interaction", "thumbstick",
+          "squeeze/value", "thumbstick/click", { "x/click", "a/click" }, { "y/click", "b/click" }, "menu/click" },
+        { "/interaction_profiles/htc/vive_focus3_controller", "XR_HTC_vive_focus3_controller_interaction",
+          "thumbstick", "squeeze/click", "thumbstick/click", { "x/click", "a/click" }, { "y/click", "b/click" },
+          "menu/click" },
+    };
+    const char* const handNames[HAND_COUNT] = { "/user/hand/left", "/user/hand/right" };
+    int profilesBound = 0;
+    for (const Layout& layout : layouts) {
+        if (layout.extension != nullptr &&
+            std::find(controllerExtensions.begin(), controllerExtensions.end(), layout.extension) ==
+                controllerExtensions.end()) {
+            continue;
+        }
+        std::vector<XrActionSuggestedBinding> bindings;
+        auto bind = [&](XrAction action, int hand, const char* input) {
+            XrPath xrPath = XR_NULL_PATH;
+            std::string path = std::string(handNames[hand]) + (strncmp(input, "output/", 7) == 0 ? "/" : "/input/") +
+                               input;
+            xrStringToPath(instance, path.c_str(), &xrPath);
+            bindings.push_back({ action, xrPath });
+        };
+        for (int hand = 0; hand < HAND_COUNT; hand++) {
+            bind(stickAction, hand, layout.stick);
+            bind(triggerAction, hand, "trigger/value");
+            bind(gripAction, hand, layout.squeeze);
+            if (layout.stickClick != nullptr) {
+                bind(stickClickAction, hand, layout.stickClick);
+            }
+            bind(primaryAction, hand, layout.primary[hand]);
+            bind(secondaryAction, hand, layout.secondary[hand]);
+            bind(gripPoseAction, hand, "grip/pose");
+            bind(aimPoseAction, hand, "aim/pose");
+            bind(hapticAction, hand, "output/haptic");
+        }
+        if (layout.menu != nullptr) {
+            bind(menuAction, HAND_LEFT, layout.menu);
+        }
+        XrPath profile = XR_NULL_PATH;
+        xrStringToPath(instance, layout.profile, &profile);
+        XrInteractionProfileSuggestedBinding suggested{ XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING };
+        suggested.interactionProfile = profile;
+        suggested.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
+        suggested.suggestedBindings = bindings.data();
+        if (Check(instance, xrSuggestInteractionProfileBindings(instance, &suggested), layout.profile)) {
+            profilesBound++;
+        }
     }
-    bind(primaryAction, "/user/hand/left/input/x/click");
-    bind(secondaryAction, "/user/hand/left/input/y/click");
-    bind(primaryAction, "/user/hand/right/input/a/click");
-    bind(secondaryAction, "/user/hand/right/input/b/click");
-    bind(menuAction, "/user/hand/left/input/menu/click");
-
-    XrPath touchProfile = XR_NULL_PATH;
-    xrStringToPath(instance, "/interaction_profiles/oculus/touch_controller", &touchProfile);
-    XrInteractionProfileSuggestedBinding suggested{ XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING };
-    suggested.interactionProfile = touchProfile;
-    suggested.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
-    suggested.suggestedBindings = bindings.data();
-    if (!Check(instance, xrSuggestInteractionProfileBindings(instance, &suggested), "Touch controller bindings")) {
+    // Any runtime takes the simple controller: a select button (the trigger), a menu button, and the poses.
+    {
+        std::vector<XrActionSuggestedBinding> bindings;
+        for (int hand = 0; hand < HAND_COUNT; hand++) {
+            for (auto [action, input] : { std::pair{ triggerAction, "/input/select/click" },
+                                          std::pair{ secondaryAction, "/input/menu/click" },
+                                          std::pair{ gripPoseAction, "/input/grip/pose" },
+                                          std::pair{ aimPoseAction, "/input/aim/pose" },
+                                          std::pair{ hapticAction, "/output/haptic" } }) {
+                XrPath xrPath = XR_NULL_PATH;
+                xrStringToPath(instance, (std::string(handNames[hand]) + input).c_str(), &xrPath);
+                bindings.push_back({ action, xrPath });
+            }
+        }
+        XrPath profile = XR_NULL_PATH;
+        xrStringToPath(instance, "/interaction_profiles/khr/simple_controller", &profile);
+        XrInteractionProfileSuggestedBinding suggested{ XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING };
+        suggested.interactionProfile = profile;
+        suggested.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
+        suggested.suggestedBindings = bindings.data();
+        if (Check(instance, xrSuggestInteractionProfileBindings(instance, &suggested), "simple controller bindings")) {
+            profilesBound++;
+        }
+    }
+    if (profilesBound == 0) {
         return false;
     }
 
@@ -715,6 +798,21 @@ void Runtime::PollEvents() {
                 mImpl->running = false;
                 mImpl->lost = true;
                 break;
+            case XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED: {
+                // Which controller layout the runtime chose for each hand (see CreateActions), for the log.
+                for (int hand = 0; hand < HAND_COUNT; hand++) {
+                    XrInteractionProfileState profile{ XR_TYPE_INTERACTION_PROFILE_STATE };
+                    if (XR_FAILED(xrGetCurrentInteractionProfile(mImpl->session, mImpl->handPaths[hand], &profile)) ||
+                        profile.interactionProfile == XR_NULL_PATH) {
+                        continue;
+                    }
+                    char name[XR_MAX_PATH_LENGTH] = "";
+                    uint32_t length = 0;
+                    xrPathToString(mImpl->instance, profile.interactionProfile, sizeof(name), &length, name);
+                    SPDLOG_INFO("[VR] {} hand: {}", hand == HAND_LEFT ? "Left" : "Right", name);
+                }
+                break;
+            }
             default:
                 break;
         }

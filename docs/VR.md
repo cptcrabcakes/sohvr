@@ -11,8 +11,8 @@ Like Ship of Harkinian, this repository contains no copyrighted game assets. To 
 ## What you need
 
 * Windows 10 or 11. VR uses the DirectX 11 renderer and isn't available on Linux or macOS.
-* A PC VR headset with an OpenXR runtime. It has been played on a Quest 3 through SteamVR and Quest Link; other OpenXR runtimes (Virtual Desktop, Windows Mixed Reality) should work but haven't been tried.
-* Motion controllers with a thumbstick, a trigger, a grip and two face buttons on each hand, as on Quest Touch or Index controllers.
+* A PC VR headset with an OpenXR runtime: SteamVR, Quest Link or Steam Link, Virtual Desktop, Pico Connect, Windows Mixed Reality, or a headset maker's own. It has been played on a Quest 3 through SteamVR and Quest Link; the others haven't been tried yet.
+* Motion controllers. The game has its controls laid out for Quest Touch (and the Quest Pro's and Quest 3's, which work as Touch), Valve Index, HTC Vive wands, Windows Mixed Reality, HP Reverb G2, Samsung Odyssey, Pico 4 and Vive Focus 3 controllers, and the most basic layout any runtime offers. On the Index, A and B are on both hands, and the left stick click pauses. On Vive wands, the trackpad is the stick, clicking it is A or X, and the menu button is B or Y; pause and recenter from the item wheel's System section. The log names the layout the runtime picked (`[VR] Left hand: ...`).
 * Everything listed under Windows in [BUILDING.md](BUILDING.md).
 
 ## Building
