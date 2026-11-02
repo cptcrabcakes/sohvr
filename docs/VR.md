@@ -96,11 +96,13 @@ The hearts, magic, rupees and keys are on the back of your left wrist, and the A
 
 ## Majora's Mask (early)
 
-`2ship/` holds Majora's Mask: 2Ship2Harkinian with the same VR core (`vr/core/`). So far it shows the world in stereo from Link's eyes, sized to whichever form he's in (towering as a Deku Scrub, small as the Fierce Deity), with the HUD and text on a panel ahead of you.
+`2ship/` holds Majora's Mask: 2Ship2Harkinian with the same VR core (`vr/core/`). So far it shows the world in stereo from Link's eyes, sized to whichever form he's in (towering as a Deku Scrub, small as the Fierce Deity), with its HUD on your wrists.
 
 Link's hands are on your controllers in every form. Swing the sword (or the Fierce Deity's, or a Deku stick) to hit with it, and swing harder to hit as hard as a jump attack. As a Goron or a Zora, punch. The shield blocks wherever you hold it. Link is left-handed, so his sword is on your left controller; **Sword in Right Hand** under Settings > VR swaps them.
 
-**Y** opens the item ring: an upright ring of your items in front of you, with rings inside rings (Ranged, Explosives, Tools, Bottles, Masks, Quest, and System for the pause menu). Touch or point at an item and squeeze the grip or pull the trigger to take it. An item goes to the hand that took it, and that hand's trigger uses it. A mask goes on right away, and **X** takes it off and puts it back on.
+**Y** opens the item ring: an upright ring of your items in front of you, with rings inside rings (Ranged, Explosives, Tools, Bottles, Masks, Quest, and System for the pause menu). Touch or point at an item and squeeze the grip or pull the trigger to take it. An item goes to the hand that took it, and that hand's trigger uses it. A mask stays in your hand: bring it to your face to put it on, transformation masks included. Squeeze a grip at your face to take it off (or turn back into Link); let go to put it away. **X** also takes off or puts back on your mask.
+
+The HUD is on your wrists: the three-day clock is a watch on your left wrist, with your hearts and magic above it and your rupees beside it, and the buttons on your right wrist show what each trigger holds. Text, the ocarina's staff and minigame timers show on a panel ahead of you.
 
 | Control | What it does |
 | - | - |

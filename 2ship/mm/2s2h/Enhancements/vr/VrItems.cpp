@@ -30,6 +30,10 @@ constexpr float kCloseDistance = 1.0f; // walking this far from the ring closes 
 constexpr float kItemModelSize = 60.0f;
 constexpr float kItemSize = 0.09f;
 constexpr float kHoverGrow = 1.5f;
+// A hand this close to the head (meters) is at the face, where masks go on and come off. A mask in hand is about
+// kMaskSize meters across.
+constexpr float kFaceReach = 0.18f;
+constexpr float kMaskSize = 0.2f;
 
 enum class EntryKind { UseItem, Mask, Category, Pause };
 
@@ -253,6 +257,14 @@ u8 sPendingItem = ITEM_NONE;
 s32 sPendingSlot = EQUIP_SLOT_NONE;
 u16 sPendingPress = 0;
 
+// A mask in one hand, on its way to the face (see UpdateMasks). One taken off at the face is held while that grip
+// is, and put away when it's let go.
+u8 sHeldMask = ITEM_NONE;
+Hand sMaskHand = HAND_LEFT;
+bool sMaskLeftFace = false;
+bool sMaskFromFace = false;
+bool sMaskGripLatched[HAND_COUNT] = {};
+
 void EntryOffset(int index, float& right, float& up) {
     int count = static_cast<int>(sMenu.entries.size());
     float angle = static_cast<float>(M_PI) * 0.5f - index * 2.0f * static_cast<float>(M_PI) / count;
@@ -358,16 +370,105 @@ u16 SlotButton(s32 slot) {
     }
 }
 
+// The mask Link has on now, a transformation's included, or ITEM_NONE.
+u8 WornMask() {
+    Player* player = GET_PLAYER(gPlayState);
+    switch (player->transformation) {
+        case PLAYER_FORM_DEKU:
+            return ITEM_MASK_DEKU;
+        case PLAYER_FORM_GORON:
+            return ITEM_MASK_GORON;
+        case PLAYER_FORM_ZORA:
+            return ITEM_MASK_ZORA;
+        case PLAYER_FORM_FIERCE_DEITY:
+            return ITEM_MASK_FIERCE_DEITY;
+        default:
+            return static_cast<u8>(Player_GetCurMaskItemId(gPlayState));
+    }
+}
+
+bool HandAtFace(const Pose& hand) {
+    const Pose& head = Runtime::Get().GetHead();
+    if (!hand.valid || !head.valid) {
+        return false;
+    }
+    float dx = hand.position[0] - head.position[0];
+    float dy = hand.position[1] - head.position[1];
+    float dz = hand.position[2] - head.position[2];
+    return dx * dx + dy * dy + dz * dz < kFaceReach * kFaceReach;
+}
+
+// Presses the C button a mask is on, putting it there (on C-down) if it's on none, which puts it on or takes it off.
+void PressMask(u8 mask) {
+    s32 slot = SlotFor(mask, HAND_LEFT);
+    if (BUTTON_ITEM_EQUIP(0, slot) != mask) {
+        sPendingItem = mask;
+        sPendingSlot = slot;
+    }
+    sPendingPress |= SlotButton(slot);
+}
+
+// A mask in a hand goes on once the hand, having left the face, reaches it. With one on, a grip squeezed at the face
+// takes it off into that hand, until the grip lets go. Majora's Mask puts masks on and takes them off by their
+// button, so these press it.
+void UpdateMasks() {
+    Runtime& runtime = Runtime::Get();
+    Player* player = GET_PLAYER(gPlayState);
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
+        bool pressed = state.gripHeld && !sMaskGripLatched[hand];
+        sMaskGripLatched[hand] = state.gripHeld;
+        bool atFace = HandAtFace(state.gripPose);
+        if (sHeldMask != ITEM_NONE) {
+            if (hand != sMaskHand) {
+                continue;
+            }
+            if (sMaskFromFace && !state.gripHeld) {
+                // Let go of a mask taken off: it goes back with the others.
+                sHeldMask = ITEM_NONE;
+            } else if (!atFace) {
+                sMaskLeftFace = true;
+            } else if (sMaskLeftFace) {
+                PressMask(sHeldMask);
+                runtime.Vibrate(static_cast<Hand>(hand), 0.6f, 0.06f);
+                SPDLOG_INFO("[VR] Put on mask {}", sHeldMask);
+                sHeldMask = ITEM_NONE;
+            }
+        } else if (pressed && atFace && !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+            u8 worn = WornMask();
+            if (worn == ITEM_NONE) {
+                continue;
+            }
+            PressMask(worn);
+            sHeldMask = worn;
+            sMaskHand = static_cast<Hand>(hand);
+            sMaskLeftFace = false;
+            sMaskFromFace = true;
+            runtime.Vibrate(static_cast<Hand>(hand), 0.6f, 0.06f);
+            SPDLOG_INFO("[VR] Took off mask {}", worn);
+        }
+    }
+}
+
 void Choose(const Entry& entry) {
     switch (entry.kind) {
         case EntryKind::UseItem:
-        case EntryKind::Mask:
             sPendingItem = entry.item;
             sPendingSlot = SlotFor(entry.item, sMenu.hand);
-            // A mask goes on right away; anything else waits for the hand's trigger.
-            sPendingPress = entry.kind == EntryKind::Mask ? SlotButton(sPendingSlot) : 0;
             SPDLOG_INFO("[VR] Item {} onto C button {} from the {} hand", entry.item, sPendingSlot,
                         sMenu.hand == HAND_LEFT ? "left" : "right");
+            Close();
+            break;
+        case EntryKind::Mask:
+            // Into the hand that chose it, on its way to the face. One already on stays on.
+            if (entry.item != WornMask()) {
+                sPendingItem = entry.item;
+                sPendingSlot = SlotFor(entry.item, sMenu.hand);
+                sHeldMask = entry.item;
+                sMaskHand = sMenu.hand;
+                sMaskLeftFace = !HandAtFace(Runtime::Get().GetController(sMenu.hand).gripPose);
+                sMaskFromFace = false;
+            }
             Close();
             break;
         case EntryKind::Category:
@@ -431,8 +532,12 @@ void Items_OnFrame() {
     if (!sMenu.open) {
         Player* player = GET_PLAYER(gPlayState);
         if (menuPressed && !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
+            // A mask in hand goes back with the others.
+            sHeldMask = ITEM_NONE;
             Open(HAND_LEFT);
+            return;
         }
+        UpdateMasks();
         return;
     }
 
@@ -517,11 +622,24 @@ void Items_OnFrame() {
 }
 
 void Items_Draw(PlayState* play) {
+    const Pose& head = Runtime::Get().GetHead();
+    Vec3f headWorld = Game_PlayToWorld(head.position);
+
+    // A mask in hand, held up by its middle with its face toward the player.
+    const Pose& maskGrip = Runtime::Get().GetController(sMaskHand).gripPose;
+    if (sHeldMask != ITEM_NONE && maskGrip.valid) {
+        Vec3f world = Game_PlayToWorld(maskGrip.position);
+        s16 yaw = RAD_TO_BINANG(atan2f(headWorld.x - world.x, headWorld.z - world.z));
+        float size = kMaskSize * Game_UnitsPerMeter() / kItemModelSize;
+        Matrix_Translate(world.x, world.y, world.z, MTXMODE_NEW);
+        Matrix_RotateZYX(0, yaw, 0, MTXMODE_APPLY);
+        Matrix_Scale(size, size, size, MTXMODE_APPLY);
+        GetItem_Draw(play, ItemModel(sHeldMask));
+    }
+
     if (!sMenu.open || sMenu.entries.empty()) {
         return;
     }
-    const Pose& head = Runtime::Get().GetHead();
-    Vec3f headWorld = Game_PlayToWorld(head.position);
     float scale = kItemSize * Game_UnitsPerMeter() / kItemModelSize;
 
     auto drawModel = [&](const float position[3], s16 model, float size, bool spin) {
@@ -563,6 +681,10 @@ uint16_t Items_TakeButtons() {
 
 bool Items_MenuOpen() {
     return sMenu.open;
+}
+
+bool Items_HandAtFace(Hand hand) {
+    return HandAtFace(Runtime::Get().GetController(hand).gripPose);
 }
 
 } // namespace SohVr

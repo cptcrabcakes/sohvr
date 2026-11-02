@@ -145,6 +145,45 @@ constexpr float kGripFix[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
 // a quarter turn about Y onto the grip.
 constexpr float kHandAlignment[4] = { 0.0f, 0.7071068f, 0.0f, 0.7071068f };
 
+// A pose fixed to a parent pose, given in the parent's own axes.
+Pose Attach(const Pose& parent, Vec3 offset, const float rotation[4]) {
+    Pose out;
+    Vec3 moved = Rotate(parent.orientation, offset);
+    out.position[0] = parent.position[0] + moved.x;
+    out.position[1] = parent.position[1] + moved.y;
+    out.position[2] = parent.position[2] + moved.z;
+    Multiply(parent.orientation, rotation, out.orientation);
+    out.valid = parent.valid;
+    return out;
+}
+
+// The grip pose turned into the frame the hand and wrist placements are written for. See kGripFix.
+Pose GripFrame(const Pose& grip) {
+    return Attach(grip, { 0.0f, 0.0f, 0.0f }, kGripFix);
+}
+
+constexpr float kNoRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+// OpenXR's grip space: -Z runs through the fist from little finger to thumb, +Y points out over the knuckles,
+// and +X points left on both hands (out of the back of the left hand, into the palm of the right). Watch faces on the
+// back of each wrist, read along the forearm with the little finger side up, as in Ocarina of Time.
+constexpr float kLeftWatchRotation[4] = { 0.5f, 0.5f, 0.5f, 0.5f };
+constexpr float kRightWatchRotation[4] = { 0.5f, -0.5f, -0.5f, 0.5f };
+constexpr Vec3 kLeftWatchOffset = { 0.035f, -0.07f, 0.0f };
+constexpr Vec3 kRightWatchOffset = { -0.035f, -0.07f, 0.0f };
+
+// HUD pieces on the N64's 320x240 screen; the HUD texture is that screen scaled up.
+struct ScreenRect {
+    int x, y, w, h;
+};
+// The three-day clock across the bottom middle: the sun and moon on their arc, the hour, and the day (or the final
+// hours' countdown), which is the left wrist's watch face.
+constexpr ScreenRect kClockRect = { 96, 166, 128, 74 };
+constexpr ScreenRect kHeartsRect = { 16, 8, 134, 48 };  // hearts and the magic bar
+constexpr ScreenRect kRupeesRect = { 16, 176, 74, 52 }; // rupees and small keys
+// The A, B and C buttons in the top right, whose icons say what A does right now and which item each trigger holds
+// (C-left on the left, C-right on the right) and which mask is on X (C-down).
+constexpr ScreenRect kButtonsRect = { 150, 0, 160, 64 };
+
 // Where the fist is in each form's hand model (model units), which goes on the controller's grip point. A Goron's
 // fists are much bigger and a Deku scrub's hands much smaller than Link's own. Estimates, not yet checked in the
 // headset.
@@ -597,8 +636,8 @@ void Game_OnFrame() {
         Items_Close();
     }
 
-    // The HUD's panel stays put while the player looks around, and comes around in front of them when they've
-    // turned well away from it.
+    // The panel ahead, for the whole HUD while text or a timer is up, stays put while the player looks around, and
+    // comes around in front of them when they've turned well away from it.
     Vec3 forward = HeadForward();
     if (sHudPose.valid) {
         float panelYaw = 2.0f * atan2f(sHudPose.orientation[1], sHudPose.orientation[3]);
@@ -675,20 +714,59 @@ bool Game_PlayingOcarina() {
     return mode >= MSGMODE_OCARINA_STARTING && mode <= MSGMODE_SCARECROW_SPAWN_DEMONSTRATION;
 }
 
+HudQuad MakeQuad(const Pose& pose, float width, ScreenRect rect) {
+    uint32_t scale = Runtime::Get().GetHudWidth() / SCREEN_WIDTH;
+    HudQuad quad;
+    quad.pose = pose;
+    quad.width = width;
+    quad.rect[0] = rect.x * scale;
+    quad.rect[1] = rect.y * scale;
+    quad.rect[2] = rect.w * scale;
+    quad.rect[3] = rect.h * scale;
+    return quad;
+}
+
+// Whether the whole HUD goes on the panel ahead: while text, a title card or the ocarina's staff is up, or a
+// minigame's timer is running, whose pieces aren't on the wrists.
+bool WholeHudAhead() {
+    if (gPlayState == nullptr || gPlayState->msgCtx.msgMode != MSGMODE_NONE) {
+        return true;
+    }
+    for (int timer = 0; timer < TIMER_ID_MAX; timer++) {
+        if (gSaveContext.timerStates[timer] != TIMER_STATE_OFF) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Game_GetHudQuads(std::vector<HudQuad>& out) {
-    if (!Game_SplitHud() || !sHudPose.valid) {
+    if (!Game_SplitHud()) {
         return;
     }
-    // For now the whole HUD, text boxes included, on one panel in front of the player.
-    HudQuad quad;
-    quad.pose = sHudPose;
-    quad.width = kHudWidth;
-    uint32_t scale = Runtime::Get().GetHudWidth() / SCREEN_WIDTH;
-    quad.rect[0] = 0;
-    quad.rect[1] = 0;
-    quad.rect[2] = SCREEN_WIDTH * scale;
-    quad.rect[3] = SCREEN_HEIGHT * scale;
-    out.push_back(quad);
+    if (WholeHudAhead()) {
+        if (sHudPose.valid) {
+            out.push_back(MakeQuad(sHudPose, kHudWidth, { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT }));
+        }
+        return;
+    }
+    const Runtime& runtime = Runtime::Get();
+    const ControllerState& left = runtime.GetController(HAND_LEFT);
+    const ControllerState& right = runtime.GetController(HAND_RIGHT);
+
+    // The three-day clock is a watch on the left wrist, with the hearts and magic above it along the forearm and
+    // the rupees and keys beside it.
+    if (left.gripPose.valid) {
+        Pose watch = Attach(GripFrame(left.gripPose), kLeftWatchOffset, kLeftWatchRotation);
+        out.push_back(MakeQuad(watch, 0.09f, kClockRect));
+        out.push_back(MakeQuad(Attach(watch, { 0.0f, 0.06f, 0.0f }, kNoRotation), 0.12f, kHeartsRect));
+        out.push_back(MakeQuad(Attach(watch, { -0.075f, -0.005f, 0.0f }, kNoRotation), 0.055f, kRupeesRect));
+    }
+    // The buttons on the right wrist.
+    if (right.gripPose.valid) {
+        Pose watch = Attach(GripFrame(right.gripPose), kRightWatchOffset, kRightWatchRotation);
+        out.push_back(MakeQuad(watch, 0.11f, kButtonsRect));
+    }
 }
 
 } // namespace SohVr
@@ -977,7 +1055,8 @@ u16 WorldButtons() {
             buttons |= BTN_CUP;
         }
     }
-    buttons |= (left.gripHeld && !menuOpen) ? BTN_R : 0;
+    // Not while the left hand is at the face, where its grip is for masks.
+    buttons |= (left.gripHeld && !menuOpen && !Items_HandAtFace(HAND_LEFT)) ? BTN_R : 0;
     buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
     return buttons;
 }
