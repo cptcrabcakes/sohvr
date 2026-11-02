@@ -48,7 +48,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | - | - |
 | Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
 | Attack | Swing the sword. Swing hard for a jump attack's damage. The blade sparks and stops against walls, and the hammer shakes the ground. |
-| Spin attack | Squeeze your sword hand's grip to charge, let go to spin; or turn around for real with the sword held out |
+| Spin attack | Hold your sword hand's trigger to charge, let go to spin; or turn around for real with the sword held out |
 | Block | Hold the shield where the attack is coming from |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both. |
@@ -84,7 +84,6 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Left stick click or Menu button | Pause |
 | A | Talk, open, climb, roll; while carrying something, put it down or throw it |
 | B | Advance text, and put the ocarina away |
-| Left trigger | Z-target |
 
 The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. While the bow or slingshot is out, the arrows or seeds left show on the back of the hand holding it. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
 

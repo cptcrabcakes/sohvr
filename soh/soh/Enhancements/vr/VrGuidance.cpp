@@ -123,8 +123,8 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
                                    "deeper than you could before." } },
     { 0x00CE, { ITEM_SCALE_GOLDEN, "You got the %rGolden Scale%w!^Jump into the water and press %yA%w. Now you can "
                                    "dive much deeper than you could before!" } },
-    { 0x00DD, { ITEM_NONE, "You mastered the secret sword technique of the %rSpin Attack%w!^%ySqueeze your sword "
-                           "hand's grip%w to charge, and %ylet go%w to spin!^Or %yturn around for real%w with your "
+    { 0x00DD, { ITEM_NONE, "You mastered the secret sword technique of the %rSpin Attack%w!^%yHold your sword "
+                           "hand's trigger%w to charge, and %ylet go%w to spin!^Or %yturn around for real%w with your "
                            "sword held out for a quick spin!" } },
     { 0x70A3, { ITEM_NONE, "Take a mask from the %yitem wheel (Y)%w and %yhold it to your face%w to wear it. Close a "
                            "hand at your face to take it off.^If you talk to someone with a mask on, you might get a "
@@ -135,36 +135,34 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
     { 0x0103, { ITEM_NONE, "%yClose a hand on a door%w and push or pull to open it. %yA%w works too, when the Action "
                            "Icon shows you can." } },
     { 0x0107, { ITEM_NONE, "From here on, we'll be going through some narrow passages! If you take it slow, maybe "
-                           "you can sneak up on some enemies.^Lean and look around corners before you turn them. "
-                           "Hold the %yleft trigger%w to lock on to anything that jumps out!" } },
+                           "you can sneak up on some enemies.^Lean and look around corners before you turn them, and "
+                           "keep your shield up!" } },
     { 0x0108, { ITEM_NONE, "%yPut both hands on this block and squeeze both grips%w. Then push the stick while "
                            "looking at it to push it, or while looking away to pull it.^To climb on top, %ygrab its "
                            "edge with both hands and pull%w." } },
     { 0x010C, { ITEM_NONE, "After you get into the water, press %yA%w to dive! I bet there are some interesting "
                            "things underwater!" } },
     { 0x0119, { ITEM_NONE, "You never know what will be around the corner in these narrow paths....^Look before you "
-                           "step, and keep the %yleft trigger%w handy to lock on!" } },
+                           "step, and keep your shield handy!" } },
     { 0x0218, { ITEM_NONE, "Hi, @! Look this way!^Look at me and press %yA%w to talk to me." } },
     { 0x0336, { ITEM_NONE, "Thrust Attack Signs!^%yThrust your sword%w straight at your target to stab it!" } },
     { 0x0337, { ITEM_NONE, "Hole of \"Z\"&Let's go through this small hole!^%yGet down%w in front of the hole to crawl "
                            "into it." } },
     { 0x0338, { ITEM_NONE, "Cut Grass With Your Sword&%ySwing sideways%w to cut sideways, and %yoverhead%w to cut "
                            "down. Swing hard for a heavy blow!" } },
-    { 0x0340, { ITEM_NONE, "Look Around&Your eyes are Link's: %yturn your head%w to look around, and the right stick "
-                           "to turn.^Hold the %yleft trigger%w to lock on to what's ahead and walk sideways around "
-                           "it. Try it right now!" } },
-    { 0x0343, { ITEM_NONE, "Lock On&If you see an arrow above something, hold the %yleft trigger%w while looking "
-                           "at it to lock on.^Press it again to move to the next one. You can practice on "
-                           "the stones next to this sign!" } },
+    { 0x0340, { ITEM_NONE, "Look Around&Your eyes are Link's: %yturn your head%w to look around, and push the right "
+                           "stick sideways to turn.^%yClick the right stick%w to recenter yourself." } },
+    { 0x0343, { ITEM_NONE, "Keep Your Eyes Open&Look at what you want to deal with: there's no need to lock on in "
+                           "VR.^When Navi has something to say about what you're looking at, %ypush the right stick "
+                           "down%w to listen." } },
     { 0x0401, { ITEM_NONE, "They say you can swim faster by pulling both arms back, %ybreaststroke style%w." } },
     { 0x1004, { ITEM_NONE, "%yClose a hand on a stone%w to pick it up!^Mean old Mido...he made me pick up the rocks "
                            "in front of his house." } },
-    { 0x1007, { ITEM_NONE, "Hey, let's work on some moves!^Hold the %yleft trigger%w to lock on. Then press %yA%w as "
-                           "you move right or left to jump sideways, back to backflip, or forward to roll.^With your "
-                           "sword out, %yswing it overhead as hard as you can%w for a heavy blow. You can lock on to "
-                           "the stone next to me, so let's practice!" } },
-    { 0x100D, { ITEM_NONE, "When a fairy flies near a person or thing, look at them and hold the %yleft trigger%w to "
-                           "lock on.^Locked on, you can talk to people from a distance, like we're doing now." } },
+    { 0x1007, { ITEM_NONE, "Hey, let's work on some moves!^Press %yA%w while you move to roll. While you roll, you "
+                           "can avoid damage.^With your sword out, %yswing it overhead as hard as you can%w for a "
+                           "heavy blow that does double damage! Try it on the stone next to me!" } },
+    { 0x100D, { ITEM_NONE, "When a fairy flies near a person or thing, take a look at what she's found.^Look at "
+                           "someone and press %yA%w to talk to them." } },
     { 0x1017, { ITEM_NONE, "Then enter, brave @, and thou too, Navi...^Navi the fairy... Thou must aid @...^And @... "
                            "When Navi speaks, push the %yright stick down%w to listen well to her words of "
                            "wisdom..." } },

@@ -789,18 +789,6 @@ u16 OcarinaStickNotes(const float stick[2]) {
 u16 CurrentButtons() {
     const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
     const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
-    bool triggerTaken[HAND_COUNT] = {};
-    switch (CurrentTool()) {
-        case HeldTool::Bow:
-            triggerTaken[ControllerFor(LINK_LEFT)] = true;
-            break;
-        case HeldTool::Hookshot:
-            triggerTaken[ControllerFor(LINK_RIGHT)] = true;
-            break;
-        default:
-            break;
-    }
-
     u16 buttons = 0;
     buttons |= right.primary ? BTN_A : 0;
     // On the floating screen (the pause menu, where B saves, file select, cutscenes, pre-rendered rooms) the game
@@ -842,11 +830,10 @@ u16 CurrentButtons() {
         buttons |= left.primary ? BTN_CLEFT : 0;
         buttons |= left.secondary ? BTN_CRIGHT : 0;
     }
-    buttons |= (left.triggerHeld && !triggerTaken[HAND_LEFT] && sReadySpell == ITEM_NONE) ? BTN_Z : 0;
     buttons |= sBlockHeld ? BTN_A : 0;
-    // A spin attack charges for as long as the sword hand's grip stays squeezed, as B held does.
+    // A spin attack charges for as long as the sword hand's trigger stays held, as B held does.
     if ((GET_PLAYER(gPlayState)->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK) &&
-        Runtime::Get().GetController(ControllerFor(LINK_LEFT)).gripHeld) {
+        Runtime::Get().GetController(ControllerFor(LINK_LEFT)).triggerHeld) {
         buttons |= BTN_B;
     }
     // Fishing, the trigger of the hand without the rod reels in, as A does.
@@ -1556,10 +1543,6 @@ void UpdateWorldGrabs() {
             grab.actor = nullptr;
         }
     }
-}
-
-bool HandOnDoorOrChest(Hand hand) {
-    return sWorldGrab[hand].actor != nullptr;
 }
 
 // Pots, rocks, bomb flowers and the like, which the game offers Link to lift with A (offered with no item, unlike
@@ -2442,12 +2425,12 @@ u32 SpinDamageFlags(Player* player) {
     return (weapon >= 1 && weapon <= 3) ? kSpinFlags[weapon - 1] : SlashDamageFlags(player);
 }
 
-// Spin attacks. Squeezing the sword hand's grip (away from the shoulder, which draws and sheathes the sword, and not
-// on a door or chest) charges one, as holding B does, and letting go spins: the game's spin sweeps the sword around
-// Link, which in VR means around the player. Turning around for real with the sword held out is a spin attack too:
-// the sword swung around with the player hits with a spin's damage.
+// Spin attacks. Holding the sword hand's trigger charges one, as holding B does, and letting go spins: the game's spin
+// sweeps the sword around Link, which in VR means around the player. Not while a spell is readied, which both
+// triggers cast. Turning around for real with the sword held out is a spin attack too: the sword swung around with
+// the player hits with a spin's damage.
 bool sSpinChargeRequested = false;
-bool sSpinGripLatched = false;
+bool sSpinTriggerLatched = false;
 float sSpinTurned = 0.0f;   // degrees the head has turned one way in the current turn
 float sSpinTurnTime = 0.0f; // seconds the current turn has taken
 float sLastHeadYaw = 0.0f;
@@ -2460,21 +2443,18 @@ bool HoldsSword(Player* player) {
     return weapon >= 1 && weapon <= 3;
 }
 
-bool HandOnDoorOrChest(Hand hand);
-
 void UpdateSpinAttack() {
     Runtime& runtime = Runtime::Get();
     Player* player = GET_PLAYER(gPlayState);
     Hand swordHand = ControllerFor(LINK_LEFT);
     const ControllerState& state = runtime.GetController(swordHand);
-    bool pressed = state.gripHeld && !sSpinGripLatched;
-    sSpinGripLatched = state.gripHeld;
+    bool pressed = state.triggerHeld && !sSpinTriggerLatched;
+    sSpinTriggerLatched = state.triggerHeld;
     bool charging = player->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK;
     if (pressed && HoldsSword(player) && !charging && player->meleeWeaponState == 0 && !Items_MenuOpen() &&
-        state.gripPose.valid && !HandOverShoulder(state.gripPose) && !HandOnDoorOrChest(swordHand) &&
-        (player->actor.bgCheckFlags & 1)) {
+        sReadySpell == ITEM_NONE && (player->actor.bgCheckFlags & 1)) {
         sSpinChargeRequested = true;
-    } else if (!state.gripHeld) {
+    } else if (!state.triggerHeld) {
         sSpinChargeRequested = false;
     }
 

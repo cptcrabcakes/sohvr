@@ -59,13 +59,12 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | A | Talk, open, climb, roll; while carrying something, put it down or throw it |
 | B | Advance text, and put the ocarina away |
 | Y | Open or close the item menu, which also holds the pause menu and the VR settings |
-| Left trigger | Z-target |
 
 | To | Do this |
 | - | - |
 | Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
 | Attack | Swing the sword. A very hard swing hits as hard as a jump attack. A blade swung into a wall or the floor sparks and stops, which wears out the Deku stick and Biggoron's Sword as the game's own hits do, and the Megaton Hammer swung into the ground shakes it, which some switches answer to. |
-| Spin attack | Squeeze your sword hand's grip (away from your shoulder) to charge, and let go to spin: the sword sweeps around you. Or turn around for real, most of the way, with the sword held out. |
+| Spin attack | Hold your sword hand's trigger to charge, and let go to spin: the sword sweeps around you. Or turn around for real, most of the way, with the sword held out. |
 | Block | Hold the shield where the attack is coming from |
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. The first ring's groups: Ranged & Tools, Explosives & Heavy, Magic & Spells (with the magic arrows), Bottles & Consumables, Quest & Lore, Equipment & Gear, and System (the ship). |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
