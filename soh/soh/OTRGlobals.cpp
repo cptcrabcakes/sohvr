@@ -1785,6 +1785,14 @@ extern "C" void Graph_StartFrame() {
             break;
         }
 #endif
+        case KbScancode::LUS_KB_F8: {
+            // VR on or off, without going through the menu. (F9 is already text to speech.)
+            bool vr = !CVarGetInteger(CVAR_SETTING("VR.Enabled"), 0);
+            CVarSetInteger(CVAR_SETTING("VR.Enabled"), vr);
+            ShipInit::Init(CVAR_SETTING("VR.Enabled"));
+            gui->GetGameOverlay()->TextDrawNotification(3.0f, true, vr ? "VR on" : "VR off");
+            break;
+        }
         case KbScancode::LUS_KB_TAB: {
             if (CVarGetInteger(CVAR_SETTING("Mods.AlternateAssetsHotkey"), 1)) {
                 CVarSetInteger(CVAR_SETTING("AltAssets"), !CVarGetInteger(CVAR_SETTING("AltAssets"), 1));

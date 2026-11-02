@@ -1,5 +1,6 @@
 #include <deque>
 #include "SohMenu.h"
+#include "soh/Enhancements/vr/VrGame.h"
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/enhancementTypes.h"
 #include "SohModals.h"
@@ -62,6 +63,14 @@ static const std::map<int32_t, const char*> vrTitleViewMap = {
     { 0, "From Its Camera" },
     { 1, "Through Link's Eyes" },
     { 2, "On the Floating Screen" },
+};
+
+static const std::map<int32_t, const char*> vrInputMap = {
+    { 0, "Nothing" },          { 1, "A" },
+    { 2, "B" },                { 3, "X" },
+    { 4, "Y" },                { 5, "Menu" },
+    { 6, "Left Stick Click" }, { 7, "Right Stick Click" },
+    { 8, "Right Stick Up" },   { 9, "Right Stick Down" },
 };
 
 static const std::map<int32_t, const char*> vrHudPlaceMap = {
@@ -714,6 +723,32 @@ void SohMenu::AddMenuSettings() {
         .Options(IntSliderOptions().Min(1).Max(5).DefaultValue(3).Format("%dx").Tooltip(
             "How much further than usual people, enemies and things stay drawn in VR, so they don't pop in as "
             "you look around. Higher costs more performance."));
+
+    // The controls editor: each action on the controllers' button of the player's choosing, picked from the list or by
+    // pressing it.
+    AddWidget(path, "VR Controls", WIDGET_SEPARATOR_TEXT);
+    {
+        static const char* const sActionNames[SohVr::VR_ACTION_COUNT] = {
+            "A (talk, open, climb)", "B (text, put the ocarina away)", "Item Wheel", "Pause", "Recenter", "Navi",
+        };
+        for (int action = 0; action < SohVr::VR_ACTION_COUNT; action++) {
+            auto vrAction = static_cast<SohVr::VrAction>(action);
+            AddWidget(path, sActionNames[action], WIDGET_CVAR_COMBOBOX)
+                .CVar(SohVr::Controls_ActionCvar(vrAction))
+                .RaceDisable(false)
+                .Options(ComboboxOptions()
+                             .ComboMap(vrInputMap)
+                             .DefaultIndex(SohVr::Controls_DefaultInput(vrAction))
+                             .Tooltip("Which button on the controllers does this. Or use Press to Bind below it."));
+            static std::deque<std::string> sBindLabels;
+            sBindLabels.push_back(std::string("Press to Bind: ") + sActionNames[action]);
+            AddWidget(path, sBindLabels.back().c_str(), WIDGET_BUTTON)
+                .RaceDisable(false)
+                .Callback([vrAction](WidgetInfo& info) { SohVr::Controls_StartBinding(vrAction); })
+                .Options(ButtonOptions().Tooltip(
+                    "Then press the button you want on the controllers, within ten seconds."));
+        }
+    }
 
     // Where each piece of the wrist HUD goes, and how big it is.
     AddWidget(path, "Wrist HUD", WIDGET_SEPARATOR_TEXT);

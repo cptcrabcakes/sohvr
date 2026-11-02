@@ -28,6 +28,8 @@ On first launch, give the game your ROM when it asks, the same as in regular Shi
 3. Under **Settings > Graphics**, set **Renderer API** to **DirectX 11**, then restart the game.
 4. Under **Settings > VR**, check **Enable VR**. The game appears in the headset within a few seconds; if no headset is found yet, it keeps checking.
 
+Press **F8** on the keyboard to turn VR on or off without opening the menu (F9 is already the game's text-to-speech key). When the headset comes off, the window keeps playing flat.
+
 The other options on the VR page are below. Most of them can also be changed in the headset: press Y, open the System section (the ship) and pick VR Settings (the compass). Its second page (More Settings) has the aim marker and path, picking up drops, whistling, climbing, running and swimming with your arms, nodding to answer, and the VR tutorials.
 
 | Option | What it does |
@@ -49,6 +51,7 @@ The other options on the VR page are below. Most of them can also be changed in 
 | Headphone Mix | While in the headset, the game mixes its sound for headphones, as its own Headset sound setting does. |
 | Show Link's Body | Link's body below your view, with his arms reaching to your hands. It doesn't crouch or lean with you. |
 | Arrows from a Quiver, Get Close to Walls | See Playing. Both on by default. |
+| VR Controls | Which controller button does A, B, the item wheel, pause, recenter and Navi. Pick one from the list, or choose Press to Bind and press the button you want within ten seconds. |
 | Wrist HUD | For each piece (hearts, rupees, buttons, map, timer, ammo): its own place, the other wrist, floating ahead, or hidden, and its size. |
 | Hand Fine Tuning | Small rotation adjustments for each hand model. Leave these at 0 unless the hands look misaligned. |
 

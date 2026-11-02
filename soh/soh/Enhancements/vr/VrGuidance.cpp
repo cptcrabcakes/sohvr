@@ -11,6 +11,8 @@
 
 #include <libultraship/bridge/consolevariablebridge.h>
 
+#include <algorithm>
+#include <string>
 #include <unordered_map>
 
 extern "C" {
@@ -216,6 +218,98 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
                            "to make it run. Once it's running, press %yA%w to tap it with the whip and speed up!^To "
                            "jump a fence, speed up and hit it head on!^When it has come to a complete stop, press "
                            "%yA%w to dismount. Now, have fun!" } },
+    // Masks, shops, enemies, the ocarina's prompts, the owl, the Gorons, the fishing pond and the beggar.
+    { 0x0010, { ITEM_MASK_SKULL, "You borrowed a %rSkull Mask%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! You feel like a monster while you wear this mask!" } },
+    { 0x0011, { ITEM_MASK_SPOOKY, "You borrowed a %rSpooky Mask%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! You can scare many people with this mask!" } },
+    { 0x0012, { ITEM_MASK_KEATON, "You borrowed a %rKeaton Mask%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! You'll be a popular guy with this mask on!" } },
+    { 0x0013, { ITEM_MASK_BUNNY, "You borrowed a %rBunny Hood%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! The hood's long ears are so cute!" } },
+    { 0x0014, { ITEM_MASK_GORON, "You borrowed a %rGoron Mask%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! It will make your head look big, though." } },
+    { 0x0015, { ITEM_MASK_ZORA, "You borrowed a %rZora Mask%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! With this mask, you can become one of the Zoras!" } },
+    { 0x0016, { ITEM_MASK_GERUDO, "You borrowed a %rGerudo Mask%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! This mask will make you look like...a girl?" } },
+    { 0x0017, { ITEM_MASK_TRUTH, "You borrowed a %rMask of Truth%w!^Take it from the %yitem wheel (Y)%w and %ybring it "
+                       "to your face%w to wear it and show it off! Show it to many people!" } },
+    { 0x001C, { ITEM_BOMB, "Bombs   (20 pieces)   80 Rupees&Take one from the %yitem wheel (Y)%w "
+                       "and %ythrow it by hand%w. You can't buy them without a bomb bag." } },
+    { 0x001D, { ITEM_BOMB, "Bombs   (30 pieces)   120 Rupees&Take one from the %yitem wheel (Y)%w "
+                       "and %ythrow it by hand%w. You can't buy them without a bomb bag." } },
+    { 0x00A3, { ITEM_BOMB, "Bombs   (5 pieces)   25 Rupees&Take one from the %yitem wheel (Y)%w "
+                       "and %ythrow it by hand%w. You can buy them only if you have a bomb bag." } },
+    { 0x00B1, { ITEM_BOMB, "Bombs   (10 pieces)   50 Rupees&Take one from the %yitem wheel (Y)%w "
+                       "and %ythrow it by hand%w. You can't buy them without a bomb bag." } },
+    { 0x00CB, { ITEM_BOMB, "Bombs   (5 pieces)   35 Rupees&Take one from the %yitem wheel (Y)%w "
+                       "and %ythrow it by hand%w. You can't buy them without a bomb bag." } },
+    { 0x002E, { ITEM_NONE, "OKAY!!&This is a game for grownups!&Hyrule's famous Shooting Gallery!^Take aim at the "
+                           "targets from that platform over there! Can you hit ten targets? You get fifteen shots!^"
+                           "%yReach over your shoulder%w to draw your weapon. Are you ready?&Go for a perfect score!&"
+                           "Good Luck!" } },
+    { 0x005B, { ITEM_GAUNTLETS_SILVER, "You found the %rSilver Gauntlets%w!&If you wore them, you would feel power "
+                                       "in your arms, the power to lift big things %ywith both hands%w!^But, these "
+                                       "gauntlets won't fit a kid... Plus, you promised to give them to Nabooru. You "
+                                       "should keep your word..." } },
+    { 0x0083, { ITEM_NONE, "Shop around with %ythe left stick%w, left or right." } },
+    { 0x0099, { ITEM_BOTTLE, "You got an %rEmpty Bottle%w!^Put something inside, then %ytip it%w or %yswing it%w "
+                             "to use it... What? Something's already inside!?" } },
+    { 0x009F, { ITEM_SHIELD_DEKU, "Deku Shield   40 Rupees&Once equipped, %yhold it where the attack is coming "
+                                  "from%w. If set on fire, it will burn!" } },
+    { 0x0101, { ITEM_NONE, "Look, look, @!&You can see down below this web if you just %ylook down%w!" } },
+    { 0x060D, { ITEM_NONE, "%rDodongo%w&Watch out for its fiery breath! %yStrike its tail%w when it turns away." } },
+    { 0x060F, { ITEM_NONE, "%rLizalfos%w&Use your shield well, and %ystrike back%w the moment it attacks." } },
+    { 0x0610, { ITEM_NONE, "%rDinolfos%w&Use your shield well, and %ystrike back%w the moment it attacks." } },
+    { 0x0612, { ITEM_NONE, "%rKeese%w&When it swoops at you, %yswat it with your sword%w." } },
+    { 0x0643, { ITEM_NONE, "%rPoe of the graveyard?%w&It fades away and comes back... %yStrike it while you can "
+                           "see it%w!" } },
+    { 0x0644, { ITEM_NONE, "%rPoe%w&It fades away and comes back... %yStrike it while you can see it%w!" } },
+    { 0x0645, { ITEM_NONE, "%rRed Tektite%w&%yStrike it as it lands%w from its jumps!" } },
+    { 0x086D, { ITEM_NONE, "Whistle, or play %yA, X, Y and the stick%w." } },
+    { 0x086E, { ITEM_NONE, "Whistle or play the notes; %yB%w to stop." } },
+    { 0x087C, { ITEM_NONE, "Whistle or play the notes; %yB%w to stop." } },
+    { 0x103E, { ITEM_NONE, "Do you want to know how to talk to %yNavi%w?" } },
+    { 0x1072, { ITEM_NONE, "Teach me some fancy fencing!&All I've ever done is %yswing wildly%w all my life!" } },
+    { 0x2036, { ITEM_NONE, "If you %yride right up to me%w, you can talk to me from horseback.^Are you ready to go "
+                           "home so soon?" } },
+    { 0x2065, { ITEM_NONE, "Go straight this way and you will see Hyrule Castle.^You will meet a princess there...^"
+                           "If you are lost and don't know which way to go, look at the Map.^The areas you have "
+                           "explored will be shown on the Map. %yTurn your right palm up%w to see where you are, or "
+                           "pause with %ythe Menu button%w and turn to the Map page with %ythe triggers%w.^On the Map "
+                           "page, you will also see a flashing dot showing you which way you should go next." } },
+    { 0x2071, { ITEM_NONE, "Beyond this point lies Lake Hylia. It is full of deep, pure water. The Zoras, who live "
+                           "all the way upstream, guard the sunken temple at the lake's bottom, as well as Zora's "
+                           "Fountain.^If you want to confirm its location on the map, pause with %ythe Menu button%w "
+                           "and turn to the Map page with %ythe triggers%w.^All the places you have visited will be "
+                           "shown on the map.&Ho hoo hoot!" } },
+    { 0x300C, { ITEM_NONE, "Those plants growing over there are Bomb Flowers. They are \"mining plants\" that grow "
+                           "only on this mountain.^They usually grow only in dark places, like caves, so Bomb Flowers "
+                           "that grow in a place like this are extremely rare.^If you have the Goron's Bracelet, even a "
+                           "little kid like you could easily %ypick one by hand%w." } },
+    { 0x301C, { ITEM_NONE, "Heeey!! What a nice tune!^Just like that, my depression is all gone! Something just came "
+                           "over me! I suddenly wanted to dance like crazy!^I am Darunia!^I'm the big boss of the "
+                           "Gorons! Was there something you wanted to ask me about?^What?^You want the Spiritual Stone "
+                           "of Fire, too?^The Spiritual Stone of Fire, also known as the Goron's Ruby, is our race's "
+                           "hidden treasure....^But hold on--I'm not going to give it to you that easily. If you want "
+                           "it so badly...^Why don't you go destroy the monsters inside of the Dodongo's Cavern and "
+                           "prove you're a real man?^That way, everybody will be happy again! If you do it, I will give "
+                           "you anything you want, even the Spiritual Stone!^I have something for you. I'm not really "
+                           "giving you this in return for anything, but take it anyway.^If you wear this, even a "
+                           "little fella like you can %ypick a Bomb Flower by hand%w." } },
+    { 0x407F, { ITEM_NONE, "OK, listen up!^Walk up to the water's edge, and %yflick the rod%w to cast your line.^"
+                           "When the lure drops into the water, you can wiggle it with %ythe left stick%w.^%yTwist "
+                           "your other wrist%w, or pull its trigger, to reel in your lure.^If you feel a bite, %yreel "
+                           "and pull the left stick back%w to set the hook. After that, keep reeling it in.^Do you "
+                           "understand?" } },
+    { 0x4081, { ITEM_NONE, "Wah ha haah!&Did you set the hook by %yreeling and pulling the left stick back%w?" } },
+    { 0x700C, { ITEM_NONE, "Please... %yhold out a bottle%w...&Please sell me the contents of a bottle...&Please... "
+                           "%yhold it out to me%w..." } },
+    { 0x70ED, { ITEM_NONE, "Please... %yhold something out%w...&Please sell me something...&Please... %yhold it "
+                           "out to me%w..." } },
+    { 0x70A2, { ITEM_NONE, "Choose a mask with %ythe left stick%w, left or right." } },
+    { 0x70AD, { ITEM_NONE, "Choose a mask with %ythe left stick%w, left or right." } },
 };
 
 void RegisterVrGuidance() {
@@ -230,7 +324,17 @@ void RegisterVrGuidance() {
         }
         // The game's own box: its kind and where it goes.
         CustomMessage vanilla = CustomMessage::LoadVanillaMessageTableEntry(*textId);
-        CustomMessage message(guide->second.text, vanilla.GetTextBoxType(), vanilla.GetTextBoxPosition());
+        // A message that asks something keeps the game's own choices after it, which the game waits for.
+        std::string text = guide->second.text;
+        std::string original = vanilla.GetEnglish(MF_RAW);
+        size_t choice = original.find_first_of("\x1B\x1C");
+        if (choice != std::string::npos && text.find_first_of("\x1B\x1C") == std::string::npos) {
+            std::string choices = original.substr(choice);
+            choices.erase(std::remove(choices.begin(), choices.end(), '\x02'), choices.end());
+            std::replace(choices.begin(), choices.end(), '\x01', '&');
+            text += choices;
+        }
+        CustomMessage message(text, vanilla.GetTextBoxType(), vanilla.GetTextBoxPosition());
         if (guide->second.icon != ITEM_NONE) {
             message.AutoFormat(guide->second.icon);
         } else {

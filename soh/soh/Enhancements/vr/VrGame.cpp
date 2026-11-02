@@ -878,6 +878,79 @@ u16 OcarinaStickNotes(const float stick[2]) {
     return 0;
 }
 
+float FrameStep();
+
+// The controls editor (see VrGame.h): which input each action is on.
+struct ActionBinding {
+    const char* cvar;
+    VrInput fallback;
+};
+constexpr ActionBinding kActionBindings[VR_ACTION_COUNT] = {
+    { CVAR_SETTING("VR.Bind.A"), VR_INPUT_A },
+    { CVAR_SETTING("VR.Bind.B"), VR_INPUT_B },
+    { CVAR_SETTING("VR.Bind.Wheel"), VR_INPUT_Y },
+    { CVAR_SETTING("VR.Bind.Pause"), VR_INPUT_MENU },
+    { CVAR_SETTING("VR.Bind.Recenter"), VR_INPUT_RIGHT_STICK_CLICK },
+    { CVAR_SETTING("VR.Bind.Navi"), VR_INPUT_RIGHT_STICK_DOWN },
+};
+// While binding, the action waiting for a button, and how long it has waited (seconds).
+int sBindingAction = -1;
+float sBindingFor = 0.0f;
+bool sInputWasHeld[VR_INPUT_COUNT] = {};
+constexpr float kBindingTimeout = 10.0f;
+
+bool InputHeld(VrInput input) {
+    const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
+    const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
+    bool upOrDown = fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0]);
+    switch (input) {
+        case VR_INPUT_A:
+            return right.primary;
+        case VR_INPUT_B:
+            return right.secondary;
+        case VR_INPUT_X:
+            return left.primary;
+        case VR_INPUT_Y:
+            return left.secondary;
+        case VR_INPUT_MENU:
+            return left.menu;
+        case VR_INPUT_LEFT_STICK_CLICK:
+            return left.stickClick;
+        case VR_INPUT_RIGHT_STICK_CLICK:
+            return right.stickClick;
+        case VR_INPUT_RIGHT_STICK_UP:
+            return upOrDown && right.stick[1] > 0.0f;
+        case VR_INPUT_RIGHT_STICK_DOWN:
+            return upOrDown && right.stick[1] < 0.0f;
+        default:
+            return false;
+    }
+}
+
+// While binding, the first input newly pressed goes to the waiting action.
+void UpdateBinding() {
+    if (sBindingAction >= 0) {
+        sBindingFor += FrameStep();
+        for (int input = VR_INPUT_NONE + 1; input < VR_INPUT_COUNT; input++) {
+            if (InputHeld(static_cast<VrInput>(input)) && !sInputWasHeld[input]) {
+                CVarSetInteger(kActionBindings[sBindingAction].cvar, input);
+                CVarSave();
+                Runtime::Get().Vibrate(HAND_LEFT, 0.4f, 0.06f);
+                Runtime::Get().Vibrate(HAND_RIGHT, 0.4f, 0.06f);
+                SPDLOG_INFO("[VR] Action {} is now on input {}", sBindingAction, input);
+                sBindingAction = -1;
+                break;
+            }
+        }
+        if (sBindingFor > kBindingTimeout) {
+            sBindingAction = -1;
+        }
+    }
+    for (int input = 0; input < VR_INPUT_COUNT; input++) {
+        sInputWasHeld[input] = InputHeld(static_cast<VrInput>(input));
+    }
+}
+
 // Reeling by twisting the wrist (radians a second), and how long a twist keeps reeling (seconds).
 constexpr float kReelTwistSpeed = 5.0f;
 constexpr float kReelLinger = 0.25f;
@@ -890,7 +963,11 @@ u16 CurrentButtons() {
     const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
     const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
     u16 buttons = 0;
-    buttons |= right.primary ? BTN_A : 0;
+    // While an action waits for its new button, the controllers press nothing.
+    if (sBindingAction >= 0) {
+        return 0;
+    }
+    buttons |= Controls_ActionHeld(VR_ACTION_A) ? BTN_A : 0;
     // On the floating screen (the pause menu, where B saves, file select, cutscenes, pre-rendered rooms) the game
     // is played flat, so the buttons are the game's own.
     if (!Vr_IsWorldStereo()) {
@@ -903,7 +980,7 @@ u16 CurrentButtons() {
         } else if (!anyHeld) {
             sMenuInputsHeld = false;
         }
-        buttons |= right.secondary ? BTN_B : 0;
+        buttons |= Controls_ActionHeld(VR_ACTION_B) ? BTN_B : 0;
         if (!sMenuInputsHeld) {
             buttons |= left.primary ? BTN_CLEFT : 0;
             buttons |= (left.secondary && !ScreenGameplay()) ? BTN_CRIGHT : 0;
@@ -916,7 +993,7 @@ u16 CurrentButtons() {
         } else if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
             buttons |= right.stick[1] > 0.0f ? BTN_CUP : BTN_L;
         }
-        buttons |= left.menu ? BTN_START : 0;
+        buttons |= Controls_ActionHeld(VR_ACTION_PAUSE) ? BTN_START : 0;
         return buttons;
     }
     // In the world the sword, shield and items are physical, so R and the C buttons aren't on any button. B is
@@ -924,7 +1001,7 @@ u16 CurrentButtons() {
     // pushed up and down.
     bool ocarina = PlayingOcarina();
     if (gPlayState->msgCtx.msgMode != MSGMODE_NONE) {
-        buttons |= right.secondary ? BTN_B : 0;
+        buttons |= Controls_ActionHeld(VR_ACTION_B) ? BTN_B : 0;
     }
     if (ocarina) {
         buttons |= left.primary ? BTN_CLEFT : 0;
@@ -949,13 +1026,12 @@ u16 CurrentButtons() {
     // in VR. With the ocarina up it plays the four C notes instead, and doesn't turn (see Game_OnFrame).
     if (ocarina) {
         buttons |= OcarinaStickNotes(right.stick);
-    } else if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0]) &&
-               right.stick[1] < 0.0f) {
+    } else if (Controls_ActionHeld(VR_ACTION_NAVI)) {
         buttons |= BTN_L;
     }
     // The menu button pauses, as does the System ring. Not the stick click, which got pressed by accident while
     // walking.
-    buttons |= left.menu ? BTN_START : 0;
+    buttons |= Controls_ActionHeld(VR_ACTION_PAUSE) ? BTN_START : 0;
     return buttons;
 }
 
@@ -1936,6 +2012,12 @@ float sGiveCooldown = 0.0f;
 
 LinkHand ItemHand(u8 item);
 
+// What's in a bottle that someone might take: the beggar's and the Poe buyer's wares, and Ruto's letter.
+bool IsShowableBottle(u8 item) {
+    return item == ITEM_FISH || item == ITEM_BLUE_FIRE || item == ITEM_BUG || item == ITEM_POE ||
+           item == ITEM_BIG_POE || item == ITEM_LETTER_RUTO;
+}
+
 bool IsTradeItem(u8 item) {
     bool mask = item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH;
     return item >= ITEM_WEIRD_EGG && item <= ITEM_CLAIM_CHECK && !mask;
@@ -1949,7 +2031,9 @@ void UpdateGiving() {
     const Pose& head = Runtime::Get().GetHead();
     const Pose& hand = Runtime::Get().GetController(ControllerFor(ItemHand(held))).gripPose;
     bool offered = false;
-    if (npc != nullptr && IsTradeItem(held) && head.valid && hand.valid && sGiveCooldown <= 0.0f) {
+    bool bottle = IsShowableBottle(held) && player->heldItemAction >= PLAYER_IA_BOTTLE &&
+                  player->heldItemAction <= PLAYER_IA_BOTTLE_FAIRY;
+    if (npc != nullptr && (IsTradeItem(held) || bottle) && head.valid && hand.valid && sGiveCooldown <= 0.0f) {
         float at[3];
         WorldToPlay(npc->focus.pos, at);
         Vec3 out = { hand.position[0] - head.position[0], hand.position[1] - head.position[1],
@@ -1960,7 +2044,8 @@ void UpdateGiving() {
     }
     sGiveHeldFor = offered ? sGiveHeldFor + FrameStep() : 0.0f;
     if (sGiveHeldFor >= kGiveHold) {
-        RequestItem(VR_REQUEST_USE_HELD);
+        // A bottle is shown by using what's in it, from the button it's on (see Game_TakeItem).
+        RequestItem(bottle ? held : VR_REQUEST_USE_HELD);
         sGiveHeldFor = 0.0f;
         sGiveCooldown = 2.0f;
         Runtime::Get().Vibrate(ControllerFor(ItemHand(held)), 0.4f, 0.06f);
@@ -3507,8 +3592,10 @@ void Game_OnFrame() {
     const ControllerState& left = runtime.GetController(HAND_LEFT);
     const ControllerState& right = runtime.GetController(HAND_RIGHT);
     bool stereo = Game_RenderStereo();
-    bool recenterPressed = right.stickClick && !sRecenterLatched;
-    sRecenterLatched = right.stickClick;
+    UpdateBinding();
+    bool recenterHeld = Controls_ActionHeld(VR_ACTION_RECENTER) && sBindingAction < 0;
+    bool recenterPressed = recenterHeld && !sRecenterLatched;
+    sRecenterLatched = recenterHeld;
     UpdateSeating(recenterPressed);
 
     // The floating screen comes back in front of the player each time it's needed, in case they turned away.
@@ -3879,6 +3966,25 @@ void Game_TakeItem(uint8_t item, Hand hand, int8_t slot) {
         }
     }
     RequestItem(item);
+}
+
+const char* Controls_ActionCvar(VrAction action) {
+    return kActionBindings[action].cvar;
+}
+
+VrInput Controls_DefaultInput(VrAction action) {
+    return kActionBindings[action].fallback;
+}
+
+bool Controls_ActionHeld(VrAction action) {
+    int input = CVarGetInteger(kActionBindings[action].cvar, kActionBindings[action].fallback);
+    return InputHeld(static_cast<VrInput>(std::clamp(input, 0, VR_INPUT_COUNT - 1)));
+}
+
+void Controls_StartBinding(VrAction action) {
+    sBindingAction = action;
+    sBindingFor = 0.0f;
+    SPDLOG_INFO("[VR] Press the button for action {} on the controllers", static_cast<int>(action));
 }
 
 bool Game_StreamerView() {

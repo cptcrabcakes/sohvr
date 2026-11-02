@@ -1000,7 +1000,7 @@ void Items_OnFrame(bool onScreen) {
     }
 
     // Y opens the menu and closes it again. While the ocarina is out, Y is one of its notes instead.
-    bool menuButton = runtime.GetController(HAND_LEFT).secondary;
+    bool menuButton = Controls_ActionHeld(VR_ACTION_WHEEL);
     bool menuPressed = menuButton && !sMenuButtonLatched && !Game_PlayingOcarina();
     sMenuButtonLatched = menuButton;
 
