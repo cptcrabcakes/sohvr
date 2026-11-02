@@ -4,7 +4,7 @@
 
 # Playing in VR
 
-HAS ONLY BEEN TESTED WITH A QUEST 3 ON STEAM AIR LINK
+HAS ONLY BEEN TESTED WITH IN STEAM VR A QUEST 3 ON STEAM AIR LINK
 
 How to build it, turn VR on and change its settings is in **[docs/VR.md](docs/VR.md)**.
 
