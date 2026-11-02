@@ -574,6 +574,12 @@ void SohMenu::AddMenuSettings() {
         .Options(CheckboxOptions().DefaultValue(true).Tooltip(
             "On ladders, vines and climbable walls, close a hand to hold on and pull to climb, hand over hand. "
             "Hanging from a ledge, pull up to climb onto it or let go to drop. The stick climbs too."));
+    AddWidget(path, "VR Tutorials", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.Guidance"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "The game's lessons on its buttons (item descriptions, the Kokiri Forest signs, Navi's first words) "
+            "say what to do in VR instead. Turn VR off and on to apply a change."));
     AddWidget(path, "Grab Ladders to Climb Them", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.GrabToClimb"))
         .RaceDisable(false)

@@ -91,6 +91,8 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Pause | Y, then the System section (the ship), then the map; or click the left stick |
 | Change VR settings | Y, then the System section (the ship), then the compass. Point at a row and pull the trigger: switches flip, and numbers go down on the row's left half and up on its right half, repeating while you hold. Y or Close puts it away. |
 
+The game's lessons on its buttons (what each item you find does, the Kokiri Forest signs and lessons, Navi's first words, the shields, the horse) say what to do in VR instead; VR Tutorials turns this off. On the floating screen they're the game's own.
+
 The hearts, magic, rupees and keys are on the back of your left wrist, and the A and B buttons on your right. While the bow or slingshot is out, the arrows or seeds left show on the back of the hand holding it. Text boxes appear on a panel in front of you. The desktop window shows what your left eye sees.
 
 ## Known limitations
