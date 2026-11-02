@@ -18,7 +18,7 @@ There are other good ways to play these games in VR, and they're well worth a lo
 * **You're Link, start to finish.** The title screen plays around you in 3D, cutscenes play out in the world through Link's eyes, and what you find is held up in your own hands.
 * **Seated or standing.** Seated mode lifts your view to a standing Link's eye height.
 
-## Tries to turn OOT into a AAA VR Game. Revamped UI, and items are now fully 6DoF interactable.
+## This port tries to reimagine Ocarina of Time, Majora's Mask, and whatever ROM hack you have as a AAA 6DOF VR Game
 
 The item wheel: press Y
 
