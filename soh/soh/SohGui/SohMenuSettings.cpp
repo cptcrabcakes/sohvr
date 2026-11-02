@@ -574,6 +574,26 @@ void SohMenu::AddMenuSettings() {
         .Options(CheckboxOptions().DefaultValue(true).Tooltip(
             "On ladders, vines and climbable walls, close a hand to hold on and pull to climb, hand over hand. "
             "Hanging from a ledge, pull up to climb onto it or let go to drop. The stick climbs too."));
+    AddWidget(path, "Grab Ladders to Climb Them", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.GrabToClimb"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "With Climb by Hand on, walking into a ladder or a climbable wall only climbs it while a hand grips."));
+    AddWidget(path, "Swing Your Arms to Run", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.ArmRun"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "While walking with the stick, swinging your arms as you would running makes Link a little faster."));
+    AddWidget(path, "Swim with Your Arms", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.SwimStrokes"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "In the water, pull both hands back as in a breaststroke to swim the way you look."));
+    AddWidget(path, "Nod or Shake Your Head to Answer", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.HeadAnswers"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "At a yes-or-no question, nod for the first answer or shake your head for the second."));
     AddWidget(path, "Bow Landing Marker", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.ShotMarker"))
         .RaceDisable(false)

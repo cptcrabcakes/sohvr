@@ -49,6 +49,12 @@ extern PlayState* gPlayState;
 #define CVAR_VR_MIC_OCARINA CVAR_SETTING("VR.MicOcarina")
 // Whether ladders, climbable walls and ledges are climbed by pulling with the hands (see UpdateClimb).
 #define CVAR_VR_CLIMB_BY_HAND CVAR_SETTING("VR.ClimbByHand")
+// Whether walking into a ladder or climbable wall only climbs it while a hand grips (see Vr_MayMountClimb).
+#define CVAR_VR_GRAB_TO_CLIMB CVAR_SETTING("VR.GrabToClimb")
+// Swinging the arms to run, nodding and shaking the head to answer, and swimming by stroking (see UpdateBody).
+#define CVAR_VR_ARM_RUN CVAR_SETTING("VR.ArmRun")
+#define CVAR_VR_HEAD_ANSWERS CVAR_SETTING("VR.HeadAnswers")
+#define CVAR_VR_SWIM_STROKES CVAR_SETTING("VR.SwimStrokes")
 // 0 keeps Link's hands on their own sides, so the sword is in the left hand like his; 1 swaps them.
 #define CVAR_VR_SWORD_IN_RIGHT_HAND CVAR_SETTING("VR.SwordInRightHand")
 // Extra rotation in degrees for each of Link's hand models, about the grip's X, Y and Z axes, for fine tuning.
@@ -1093,6 +1099,207 @@ float HandSpeed(Hand hand) {
 // origin.
 constexpr float kLiftReach = 22.0f;
 constexpr float kLiftCenterHeight = 12.0f;
+
+// How fast a hand is moving in the play space (meters a second, each way), leaving out Link's own movement.
+Vec3 HandVelocity(Hand hand) {
+    uint32_t refresh = Runtime::Get().GetRefreshRate();
+    int count = sHandHistoryCount[hand];
+    if (refresh == 0 || count < 2) {
+        return { 0.0f, 0.0f, 0.0f };
+    }
+    const float* newest = sHandHistory[hand][0];
+    const float* oldest = sHandHistory[hand][count - 1];
+    float perSecond = refresh / static_cast<float>(count - 1);
+    return { (newest[0] - oldest[0]) * perSecond, (newest[1] - oldest[1]) * perSecond,
+             (newest[2] - oldest[2]) * perSecond };
+}
+
+float FrameSeconds() {
+    uint32_t refresh = Runtime::Get().GetRefreshRate();
+    return refresh > 0 ? 1.0f / refresh : 0.0f;
+}
+
+// Running by swinging the arms: while the stick walks Link, swinging the arms in turn (one up as the other goes
+// down) makes him faster, by up to the run boost, as hard as they swing between the floor and full speeds (meters
+// a second).
+constexpr float kRunBoost = 0.25f;
+constexpr float kArmSwingFloor = 0.6f;
+constexpr float kArmSwingFull = 1.8f;
+float sRunBoost = 0.0f;
+
+void UpdateArmRun(Player* player) {
+    const float* stick = Runtime::Get().GetController(HAND_LEFT).stick;
+    bool walking = stick[0] * stick[0] + stick[1] * stick[1] > kStickDeadzone * kStickDeadzone &&
+                   (player->actor.bgCheckFlags & 1) && !(player->stateFlags1 & PLAYER_STATE1_IN_WATER);
+    float target = 0.0f;
+    if (walking && CVarGetInteger(CVAR_VR_ARM_RUN, 1)) {
+        Vec3 left = HandVelocity(HAND_LEFT);
+        Vec3 right = HandVelocity(HAND_RIGHT);
+        if (left.y * right.y < 0.0f) {
+            float swing = (fabsf(left.y) + fabsf(right.y)) * 0.5f;
+            target = std::clamp((swing - kArmSwingFloor) / (kArmSwingFull - kArmSwingFloor), 0.0f, 1.0f) * kRunBoost;
+        }
+    }
+    // Quick to pick up, slower to fade, so the boost doesn't flicker between swings.
+    sRunBoost += (target - sRunBoost) * (target > sRunBoost ? 0.2f : 0.04f);
+}
+
+// Shaking free: grabbed by a ReDead, Gibdo or Like Like, shaking the controllers presses A and B in turn, each
+// shake one press, which the game counts toward breaking free as it does mashed buttons.
+constexpr float kShakeSpeed = 1.2f; // meters a second
+Vec3 sShakeLast[HAND_COUNT] = {};
+float sShakeCooldown[HAND_COUNT] = {};
+bool sShakeUsesB = false;
+
+void UpdateShakeFree(Player* player) {
+    if (!(player->stateFlags2 & PLAYER_STATE2_GRABBED_BY_ENEMY)) {
+        return;
+    }
+    float dt = FrameSeconds();
+    for (int i = 0; i < HAND_COUNT; i++) {
+        Hand hand = static_cast<Hand>(i);
+        Vec3 velocity = HandVelocity(hand);
+        sShakeCooldown[i] = std::max(sShakeCooldown[i] - dt, 0.0f);
+        bool fast = sqrtf(Dot(velocity, velocity)) > kShakeSpeed;
+        bool reversed = Dot(velocity, sShakeLast[i]) < 0.0f;
+        if (fast) {
+            if (reversed && sShakeCooldown[i] == 0.0f) {
+                sLatchedButtons |= sShakeUsesB ? BTN_B : BTN_A;
+                sShakeUsesB = !sShakeUsesB;
+                sShakeCooldown[i] = 0.08f;
+                Runtime::Get().Vibrate(hand, 0.5f, 0.03f);
+            }
+            sShakeLast[i] = velocity;
+        }
+    }
+}
+
+// Getting down for real at a crawlspace crawls into it, as A does there.
+float sCrawlCooldown = 0.0f;
+
+void UpdateCrawl(Player* player) {
+    sCrawlCooldown = std::max(sCrawlCooldown - FrameSeconds(), 0.0f);
+    if ((player->stateFlags2 & PLAYER_STATE2_DO_ACTION_ENTER) && Crouching() && sCrawlCooldown == 0.0f) {
+        sLatchedButtons |= BTN_A;
+        sCrawlCooldown = 1.0f;
+        SPDLOG_INFO("[VR] Crouched into a crawlspace");
+    }
+}
+
+// Answering with the head: at a yes-or-no question, nodding answers with the first choice and shaking the head with
+// the second, as choosing it and pressing A does. A nod dips the head at least the nod angle and brings it back up
+// within the gesture time; a shake turns it past the shake angle one way and the other, twice. Not in the first
+// moment the question is up, while the player is still reading it.
+constexpr float kNodDegrees = 12.0f;
+constexpr float kShakeDegrees = 12.0f;
+constexpr float kGestureTime = 1.0f;
+constexpr float kQuestionSettle = 0.4f;
+float sQuestionShown = 0.0f;
+float sGestureStartPitch = 0.0f;
+float sGestureStartYaw = 0.0f;
+float sGestureTime = 0.0f;
+bool sNodDipped = false;
+int sShakeSide = 0;   // which side the head last turned past: -1, 0 or 1
+int sShakeTurns = 0;
+
+void UpdateHeadAnswer() {
+    MessageContext* msgCtx = &gPlayState->msgCtx;
+    bool twoChoices = msgCtx->textboxEndType == TEXTBOX_ENDTYPE_2_CHOICE;
+    bool question = msgCtx->msgMode == MSGMODE_TEXT_DONE &&
+                    (twoChoices || msgCtx->textboxEndType == TEXTBOX_ENDTYPE_3_CHOICE);
+    const Pose& head = Runtime::Get().GetHead();
+    if (!question || !head.valid || !CVarGetInteger(CVAR_VR_HEAD_ANSWERS, 1)) {
+        sQuestionShown = 0.0f;
+        return;
+    }
+    Vec3 forward = HeadForward();
+    float pitch = RADF_TO_DEGF(asinf(std::clamp(forward.y, -1.0f, 1.0f)));
+    float yaw = RADF_TO_DEGF(atan2f(forward.x, -forward.z));
+    float dt = FrameSeconds();
+    if (sQuestionShown < kQuestionSettle) {
+        sQuestionShown += dt;
+        sGestureStartPitch = pitch;
+        sGestureStartYaw = yaw;
+        sGestureTime = 0.0f;
+        sNodDipped = false;
+        sShakeSide = 0;
+        sShakeTurns = 0;
+        return;
+    }
+    sGestureTime += dt;
+    if (sGestureTime > kGestureTime) {
+        // Too slow for a gesture: start over from where the head is now.
+        sGestureStartPitch = pitch;
+        sGestureStartYaw = yaw;
+        sGestureTime = 0.0f;
+        sNodDipped = false;
+        sShakeSide = 0;
+        sShakeTurns = 0;
+        return;
+    }
+    float dip = sGestureStartPitch - pitch;
+    float turn = remainderf(yaw - sGestureStartYaw, 360.0f);
+    int answer = -1;
+    if (dip > kNodDegrees) {
+        sNodDipped = true;
+    } else if (sNodDipped && dip < kNodDegrees * 0.3f) {
+        answer = 0;
+    }
+    int side = turn > kShakeDegrees ? 1 : (turn < -kShakeDegrees ? -1 : 0);
+    if (side != 0 && side != sShakeSide) {
+        sShakeTurns++;
+        sShakeSide = side;
+        if (sShakeTurns >= 2 && twoChoices) {
+            answer = 1;
+        }
+    }
+    if (answer >= 0) {
+        msgCtx->choiceIndex = static_cast<u8>(answer);
+        sLatchedButtons |= BTN_A;
+        sQuestionShown = 0.0f;
+        SPDLOG_INFO("[VR] Answered with a {}", answer == 0 ? "nod" : "shake of the head");
+    }
+}
+
+// Swimming with the arms: pulling both hands back through the water, as in a breaststroke, swims Link the way the
+// head looks, as hard as they pull, easing off between strokes. The stick still swims as before.
+constexpr float kStrokeFloor = 0.5f; // meters a second each hand has to pull back
+constexpr float kStrokeFull = 1.5f;
+constexpr float kStrokeEase = 0.7f;  // seconds a stroke's push takes to fade
+float sSwimThrust = 0.0f;
+
+void UpdateSwimStrokes(Player* player) {
+    bool swimming = (player->stateFlags1 & PLAYER_STATE1_IN_WATER) && !(player->actor.bgCheckFlags & 1) &&
+                    CVarGetInteger(CVAR_VR_SWIM_STROKES, 1);
+    float dt = FrameSeconds();
+    sSwimThrust *= expf(-dt / kStrokeEase);
+    if (!swimming) {
+        sSwimThrust = 0.0f;
+        return;
+    }
+    Vec3 look = HeadForward();
+    float length = sqrtf(look.x * look.x + look.z * look.z);
+    if (length < 0.1f) {
+        return;
+    }
+    Vec3 ahead = { look.x / length, 0.0f, look.z / length };
+    float pullLeft = -Dot(HandVelocity(HAND_LEFT), ahead);
+    float pullRight = -Dot(HandVelocity(HAND_RIGHT), ahead);
+    if (pullLeft > kStrokeFloor && pullRight > kStrokeFloor) {
+        float stroke = std::clamp(((pullLeft + pullRight) * 0.5f - kStrokeFloor) / (kStrokeFull - kStrokeFloor), 0.3f,
+                                  1.0f);
+        sSwimThrust = std::max(sSwimThrust, stroke);
+    }
+}
+
+void UpdateBody() {
+    Player* player = GET_PLAYER(gPlayState);
+    UpdateArmRun(player);
+    UpdateShakeFree(player);
+    UpdateCrawl(player);
+    UpdateHeadAnswer();
+    UpdateSwimStrokes(player);
+}
 
 // A throw the grip let go of, waiting for the game to release the carried actor.
 bool sThrowPending = false;
@@ -2462,6 +2669,7 @@ void Game_OnFrame() {
         UpdateSpinAttack();
         UpdateSpell();
         UpdateLens();
+        UpdateBody();
         UpdateMasks();
         UpdateBottle();
         UpdateFishing();
@@ -2796,6 +3004,11 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
     if (x * x + y * y > SohVr::kStickDeadzone * SohVr::kStickDeadzone) {
         pads[0].stick_x = static_cast<int8_t>(lroundf(std::clamp(x, -1.0f, 1.0f) * SohVr::kStickRange));
         pads[0].stick_y = static_cast<int8_t>(lroundf(std::clamp(y, -1.0f, 1.0f) * SohVr::kStickRange));
+    }
+    // Swimming strokes swim, the way the head looks, while the stick is left alone (see UpdateSwimStrokes).
+    if (SohVr::sSwimThrust > 0.1f && Vr_IsWorldStereo() && x * x + y * y <= SohVr::kStickDeadzone * SohVr::kStickDeadzone) {
+        pads[0].stick_x = 0;
+        pads[0].stick_y = static_cast<int8_t>(lroundf(std::min(SohVr::sSwimThrust, 1.0f) * SohVr::kStickRange));
     }
     // A hand holding on while climbing climbs instead (see UpdateClimb).
     if (SohVr::sClimbStickActive && Vr_IsWorldStereo()) {
@@ -3205,6 +3418,18 @@ extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
         }
     }
     return live;
+}
+
+extern "C" f32 Vr_MovementMultiplier(void) {
+    return Vr_IsWorldStereo() ? 1.0f + SohVr::sRunBoost : 1.0f;
+}
+
+extern "C" bool Vr_MayMountClimb(void) {
+    if (!Vr_IsWorldStereo() || !CVarGetInteger(CVAR_VR_CLIMB_BY_HAND, 1) || !CVarGetInteger(CVAR_VR_GRAB_TO_CLIMB, 1)) {
+        return true;
+    }
+    const SohVr::Runtime& runtime = SohVr::Runtime::Get();
+    return runtime.GetController(SohVr::HAND_LEFT).gripHeld || runtime.GetController(SohVr::HAND_RIGHT).gripHeld;
 }
 
 extern "C" bool Vr_BoomerangCatchPoint(Vec3f* point) {

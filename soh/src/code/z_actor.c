@@ -1300,7 +1300,7 @@ void Actor_UpdateVelocityXZGravity(Actor* actor) {
                          player->stateFlags2 & PLAYER_STATE2_CRAWLING;
     f32 speedModifier = 1.0f;
     if (actor->id == ACTOR_PLAYER && !inCutscene) {
-        speedModifier = GameInteractor_MovementSpeedMultiplier();
+        speedModifier = GameInteractor_MovementSpeedMultiplier() * Vr_MovementMultiplier();
     }
     actor->velocity.x = Math_SinS(actor->world.rot.y) * actor->speedXZ * speedModifier;
     actor->velocity.z = Math_CosS(actor->world.rot.y) * actor->speedXZ * speedModifier;

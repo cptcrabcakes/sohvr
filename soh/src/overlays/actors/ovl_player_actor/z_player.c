@@ -7702,7 +7702,8 @@ s32 func_8083EC18(Player* this, PlayState* play, u32 wallFlags) {
                     phi_f12 = fabsf(phi_f12);
                 }
 
-                if (phi_f12 < 8.0f) {
+                // In VR, a ladder or climbable wall walked into is only climbed while a hand grips it.
+                if ((phi_f12 < 8.0f) && Vr_MayMountClimb()) {
                     f32 wallPolyNormalX = COLPOLY_GET_NORMAL(wallPoly->normal.x);
                     f32 wallPolyNormalZ = COLPOLY_GET_NORMAL(wallPoly->normal.z);
                     f32 sp34 = this->distToInteractWall;

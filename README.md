@@ -52,7 +52,12 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both. |
 | Throw | Swing and let go of the grip; a slow release sets it down. Carried in both hands, let go of both together to throw with both. |
-| Climb | On a ladder, vine or climbable wall, close a hand to hold on and pull down to climb, hand over hand; pull sideways to move along a wall. Hanging from a ledge, pull up to climb onto it, or let go to drop. Where A says Climb, grab the ledge with both hands and pull. |
+| Climb | Grab a ladder, vine or climbable wall to climb onto it. Close a hand to hold on and pull down to climb, hand over hand; pull sideways to move along a wall. Hanging from a ledge, pull up to climb onto it, or let go to drop. Where A says Climb, grab the ledge with both hands and pull. |
+| Run faster | Swing your arms as you walk with the stick |
+| Swim | Pull both hands back, breaststroke style, to swim the way you look; the stick swims too |
+| Crawl into a crawlspace | Get down for real in front of it |
+| Break free of a ReDead or Like Like | Shake the controllers |
+| Answer yes or no | Nod for the first answer, shake your head for the second |
 | Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips, then push the stick forward while looking at it to push, or while looking away to pull |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift |
 | Fire the bow or slingshot | With your other hand at the bow, pull its trigger, draw back and let go. Pull lower to aim higher, and further for a faster, longer shot. A ring shows where it will land. |

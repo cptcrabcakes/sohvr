@@ -157,6 +157,11 @@ bool Vr_TakeThrowRequest(void);
 bool Vr_TakeBoomerangThrow(Vec3f* from);
 // Gives a thrown actor the speed and direction the hand had when the grip let go. Leaves button throws alone.
 void Vr_ThrowWithHand(Player* player, Actor* thrown);
+// How much faster than the stick alone Link moves: swinging the arms runs (see UpdateArmRun). 1 outside VR.
+f32 Vr_MovementMultiplier(void);
+// Whether walking into a ladder or climbable wall may climb it: in VR, only while a hand grips, unless that's
+// turned off. True outside VR.
+bool Vr_MayMountClimb(void);
 // Where a returning boomerang flies to and is caught: the hand that threw it. False outside VR, where it's Link.
 bool Vr_BoomerangCatchPoint(Vec3f* point);
 // The boomerang was just caught.
