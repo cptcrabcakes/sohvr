@@ -32,5 +32,11 @@ void Game_CutOverlay(bool cut);
 Gfx* Game_Overlay();
 // The pieces of the HUD to show in the room.
 void Game_GetHudQuads(std::vector<HudQuad>& out);
+// A point in the play space (meters), in the world, as of the tick being built.
+Vec3f Game_PlayToWorld(const float position[3]);
+// Game units per meter, as of the tick being built.
+float Game_UnitsPerMeter();
+// Whether the ocarina is out, so its notes are on the buttons.
+bool Game_PlayingOcarina();
 
 } // namespace SohVr

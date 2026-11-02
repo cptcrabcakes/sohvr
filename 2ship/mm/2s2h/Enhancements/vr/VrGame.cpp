@@ -1,5 +1,6 @@
 #include "VrGame.h"
 #include "VrCvars.h"
+#include "VrItems.h"
 #include "VrRuntime.h"
 
 #include "2s2h/GameInteractor/GameInteractor.h"
@@ -200,6 +201,8 @@ u8 sLastForm = 0xFF;
 u16 sLatchedButtons = 0;
 bool sTurnLatched = false;
 bool sRecenterLatched = false;
+// A trigger that chose from the item ring doesn't also use the item until it's let go.
+bool sTriggerBlocked[HAND_COUNT] = {};
 
 Gfx sOverlayCallSaved;
 Gfx* sOverlayCutAt = nullptr;
@@ -587,6 +590,13 @@ void Game_OnFrame() {
         Turn(-turn * kSmoothTurnSpeed / runtime.GetRefreshRate());
     }
 
+    // The item ring, while the world is shown.
+    if (Vr_IsWorldStereo()) {
+        Items_OnFrame();
+    } else {
+        Items_Close();
+    }
+
     // The HUD's panel stays put while the player looks around, and comes around in front of them when they've
     // turned well away from it.
     Vec3 forward = HeadForward();
@@ -646,6 +656,23 @@ void Game_CutOverlay(bool cut) {
 
 Gfx* Game_Overlay() {
     return sRender.overlay;
+}
+
+Vec3f Game_PlayToWorld(const float position[3]) {
+    Vec3 world = ToWorld(position, sBuild.anchor, sBuild.unitsPerMeter);
+    return { world.x, world.y, world.z };
+}
+
+float Game_UnitsPerMeter() {
+    return sBuild.unitsPerMeter;
+}
+
+bool Game_PlayingOcarina() {
+    if (gPlayState == nullptr) {
+        return false;
+    }
+    u8 mode = gPlayState->msgCtx.msgMode;
+    return mode >= MSGMODE_OCARINA_STARTING && mode <= MSGMODE_SCARECROW_SPAWN_DEMONSTRATION;
 }
 
 void Game_GetHudQuads(std::vector<HudQuad>& out) {
@@ -897,9 +924,87 @@ extern "C" bool Vr_HoldsShield(Player* player) {
     return IsVrPlayer(player) && player->rightHandType == PLAYER_MODELTYPE_RH_SHIELD;
 }
 
-// For now the controllers are a gamepad: the left stick walks where the head looks, A and B are A and B, X and Y are
-// C-left and C-right, the right stick's up and down are C-up and C-down, the left trigger is Z, the right trigger
-// R, and the left stick click or menu button is Start. Physical controls come next.
+extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
+    if (Vr_IsWorldStereo()) {
+        SohVr::Items_Draw(play);
+    }
+}
+
+namespace SohVr {
+namespace {
+
+// The ocarina's four C notes on the right stick, pushed up, down, left or right.
+u16 OcarinaStickNotes(const float stick[2]) {
+    if (fabsf(stick[1]) > 0.7f && fabsf(stick[1]) > fabsf(stick[0])) {
+        return stick[1] > 0.0f ? BTN_CUP : BTN_CDOWN;
+    }
+    if (fabsf(stick[0]) > 0.7f && fabsf(stick[0]) > fabsf(stick[1])) {
+        return stick[0] > 0.0f ? BTN_CRIGHT : BTN_CLEFT;
+    }
+    return 0;
+}
+
+// In the world: A and B are A and B. Each trigger uses the item its hand chose from the ring, on that side's C button,
+// and X is C-down, where a chosen mask goes, to take it off or put it back on. Y opens the ring (see Items_OnFrame).
+// The left grip is R: the shield, or another form's guard. The right stick pushed up is C-up, for Tatl. With the
+// ocarina out X and Y play C-left and C-right, and the right stick its four C notes. The left stick click or menu
+// button is Start.
+u16 WorldButtons() {
+    const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
+    const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
+    u16 buttons = 0;
+    buttons |= right.primary ? BTN_A : 0;
+    buttons |= right.secondary ? BTN_B : 0;
+    bool menuOpen = Items_MenuOpen();
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const ControllerState& state = Runtime::Get().GetController(static_cast<Hand>(hand));
+        if (menuOpen) {
+            sTriggerBlocked[hand] = true;
+        } else if (!state.triggerHeld) {
+            sTriggerBlocked[hand] = false;
+        }
+        if (state.triggerHeld && !sTriggerBlocked[hand]) {
+            buttons |= hand == HAND_LEFT ? BTN_CLEFT : BTN_CRIGHT;
+        }
+    }
+    if (Game_PlayingOcarina()) {
+        buttons |= left.primary ? BTN_CLEFT : 0;
+        buttons |= left.secondary ? BTN_CRIGHT : 0;
+        buttons |= OcarinaStickNotes(right.stick);
+    } else {
+        buttons |= left.primary ? BTN_CDOWN : 0;
+        if (right.stick[1] > 0.7f && right.stick[1] > fabsf(right.stick[0])) {
+            buttons |= BTN_CUP;
+        }
+    }
+    buttons |= (left.gripHeld && !menuOpen) ? BTN_R : 0;
+    buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
+    return buttons;
+}
+
+// On the floating screen (the pause menu, title screen and file select) the controllers are a gamepad: A and B are
+// A and B, X and Y are C-left and C-right, the right stick's up and down are C-up and C-down, the left trigger is Z,
+// the right trigger R, and the left stick click or menu button is Start.
+u16 ScreenButtons() {
+    const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
+    const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
+    u16 buttons = 0;
+    buttons |= right.primary ? BTN_A : 0;
+    buttons |= right.secondary ? BTN_B : 0;
+    buttons |= left.primary ? BTN_CLEFT : 0;
+    buttons |= left.secondary ? BTN_CRIGHT : 0;
+    if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
+        buttons |= right.stick[1] > 0.0f ? BTN_CUP : BTN_CDOWN;
+    }
+    buttons |= left.triggerHeld ? BTN_Z : 0;
+    buttons |= right.triggerHeld ? BTN_R : 0;
+    buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
+    return buttons;
+}
+
+} // namespace
+} // namespace SohVr
+
 extern "C" void Vr_OverridePads(OSContPad* pads) {
     if (!SohVr::SessionRunning()) {
         return;
@@ -913,17 +1018,11 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
         pads[0].stick_x = static_cast<int8_t>(lroundf(std::clamp(x, -1.0f, 1.0f) * kStickRange));
         pads[0].stick_y = static_cast<int8_t>(lroundf(std::clamp(y, -1.0f, 1.0f) * kStickRange));
     }
-    u16 buttons = 0;
-    buttons |= right.primary ? BTN_A : 0;
-    buttons |= right.secondary ? BTN_B : 0;
-    buttons |= left.primary ? BTN_CLEFT : 0;
-    buttons |= left.secondary ? BTN_CRIGHT : 0;
-    if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
-        buttons |= right.stick[1] > 0.0f ? BTN_CUP : BTN_CDOWN;
+    u16 buttons = Vr_IsWorldStereo() ? WorldButtons() : ScreenButtons();
+    // What was chosen from the item ring goes on its C button, and may press one.
+    if (Vr_IsWorldStereo()) {
+        buttons |= Items_TakeButtons();
     }
-    buttons |= left.triggerHeld ? BTN_Z : 0;
-    buttons |= right.triggerHeld ? BTN_R : 0;
-    buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
     pads[0].button |= buttons | sLatchedButtons;
     sLatchedButtons = 0;
 }

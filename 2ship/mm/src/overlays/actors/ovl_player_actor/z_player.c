@@ -5739,6 +5739,18 @@ PlayerMeleeWeaponAnimation func_808335F4(Player* this) {
 
 void func_8083375C(Player* this, PlayerMeleeWeaponAnimation meleeWeaponAnim);
 
+// VR: the item-get model for an item, from the first get-item entry that gives it.
+s16 Player_GetItemModelVr(u8 item) {
+    s32 i;
+
+    for (i = 0; i < ARRAY_COUNT(sGetItemTable); i++) {
+        if ((sGetItemTable[i].itemId == item) && (sGetItemTable[i].gid != 0)) {
+            return ABS_ALT(sGetItemTable[i].gid) - 1;
+        }
+    }
+    return GID_NONE;
+}
+
 // VR: a blade swung by hand hits as a slash, or as hard as a jump attack when swung hard.
 void Player_SetVrSwingDamage(Player* this, s32 strong) {
     func_8083375C(this, strong ? PLAYER_MWA_JUMPSLASH_FINISH : PLAYER_MWA_FORWARD_SLASH_1H);
@@ -13361,6 +13373,9 @@ void Player_Draw(Actor* thisx, PlayState* play) {
     if (Vr_HidesLink((Player*)thisx)) {
         gfxCtx->polyOpa.p = opa;
         gfxCtx->polyXlu.p = xlu;
+    }
+    if (thisx == &GET_PLAYER(play)->actor) {
+        Vr_DrawPlayerExtras(play);
     }
 }
 

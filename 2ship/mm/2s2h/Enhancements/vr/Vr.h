@@ -51,8 +51,13 @@ void Vr_FistSwing(PlayState* play, Player* player, s32 hand);
 // Whether the shield in Link's hand blocks, wherever it's held.
 bool Vr_HoldsShield(Player* player);
 
+// Draws what VR adds around the player, such as the item ring. Called from Player_Draw.
+void Vr_DrawPlayerExtras(PlayState* play);
+
 // In z_player.c: sets the sword's damage for a swing by hand, as a slash, or a jump attack when strong.
 void Player_SetVrSwingDamage(Player* player, s32 strong);
+// In z_player.c: the item-get model (GetItem_Draw's id) for an item, or GID_NONE.
+s16 Player_GetItemModelVr(u8 item);
 
 #ifdef __cplusplus
 }

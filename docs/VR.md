@@ -100,19 +100,22 @@ The hearts, magic, rupees and keys are on the back of your left wrist, and the A
 
 Link's hands are on your controllers in every form. Swing the sword (or the Fierce Deity's, or a Deku stick) to hit with it, and swing harder to hit as hard as a jump attack. As a Goron or a Zora, punch. The shield blocks wherever you hold it. Link is left-handed, so his sword is on your left controller; **Sword in Right Hand** under Settings > VR swaps them.
 
-The buttons still work like a gamepad for now:
+**Y** opens the item ring: an upright ring of your items in front of you, with rings inside rings (Ranged, Explosives, Tools, Bottles, Masks, Quest, and System for the pause menu). Touch or point at an item and squeeze the grip or pull the trigger to take it. An item goes to the hand that took it, and that hand's trigger uses it. A mask goes on right away, and **X** takes it off and puts it back on.
 
 | Control | What it does |
 | - | - |
 | Left stick | Walk, toward where you're looking |
 | Right stick left/right | Turn |
-| Right stick up/down | C-up / C-down |
+| Right stick up | Talk to Tatl (C-up) |
 | Right stick click | Recenter |
 | A / B | A / B |
-| X / Y | C-left / C-right |
-| Left trigger | Z-target |
-| Right trigger | R (shield) |
-| Left stick click or Menu button | Start |
+| Y | Item ring |
+| Left / right trigger | Use the item in that hand (C-left / C-right) |
+| X | Take off or put on your mask (C-down) |
+| Left grip | Shield, or another form's guard (R) |
+| Left stick click or Menu button | Pause |
+
+With the ocarina out, A, X, Y and the right stick (up, down, left, right) play its notes. In the pause menu, title screen and file select the controllers work like a gamepad: X and Y are C-left and C-right, the right stick up and down are C-up and C-down, the left trigger is Z and the right trigger is R.
 
 To build it, check out the submodules (`git submodule update --init 2ship/libultraship 2ship/ZAPDTR 2ship/OTRExporter`), then follow `2ship/docs/BUILDING.md` from the `2ship` folder. Put your Majora's Mask ROM (the US N64 one) in `2ship/OTRExporter/` and build the `ExtractAssets` target to make `mm.o2r`, then copy `2ship.o2r` from `2ship/build/x64/mm/` next to `2ship.exe`. Turn VR on under Settings > VR.
 
