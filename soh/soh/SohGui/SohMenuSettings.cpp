@@ -650,6 +650,17 @@ void SohMenu::AddMenuSettings() {
                      .Tooltip("How the title screen's cutscene is watched: following its camera around the world, "
                               "through the eyes of the Link riding in it, or flat on the floating screen, which is "
                               "the calmest."));
+    AddWidget(path, "Arrows from a Quiver", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.Quiver"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "With the bow out, reach over your drawing hand's shoulder and squeeze the grip to take an arrow before "
+            "nocking it. Off: the arrow is there as soon as you nock."));
+    AddWidget(path, "Get Close to Walls", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.CloseToWalls"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Link keeps a quarter less of his usual distance from walls, so you can lean up to them."));
     AddWidget(path, "Draw Distance: %dx", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_SETTING("VR.DrawDistance"))
         .RaceDisable(false)

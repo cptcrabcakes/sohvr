@@ -24,6 +24,7 @@ extern "C" {
 #include "objects/object_link_child/object_link_child.h"
 #include "objects/object_gi_hookshot/object_gi_hookshot.h"
 #include "overlays/actors/ovl_Arms_Hook/z_arms_hook.h"
+#include "overlays/actors/ovl_En_Ishi/z_en_ishi.h"
 // Named in a log line when a hookshot pull doesn't aim (see CheckHookshotPull).
 s32 func_8083501C(Player* thisx, PlayState* play);
 s32 func_808351D4(Player* thisx, PlayState* play);
@@ -64,6 +65,10 @@ extern PlayState* gPlayState;
 // How the title screen's cutscene is watched: 0 from its own camera, 1 through Link's eyes, 2 on the floating
 // screen.
 #define CVAR_VR_TITLE_VIEW CVAR_SETTING("VR.TitleView")
+// Arrows come from a quiver over the shoulder (see UpdateQuiver).
+#define CVAR_VR_QUIVER CVAR_SETTING("VR.Quiver")
+// Link's body comes closer to walls, so the eyes can (see Vr_WallRadiusScale).
+#define CVAR_VR_CLOSE_TO_WALLS CVAR_SETTING("VR.CloseToWalls")
 // How many times further than usual actors stay drawn in VR (1 to 5).
 #define CVAR_VR_DRAW_DISTANCE CVAR_SETTING("VR.DrawDistance")
 // Extra rotation in degrees for each of Link's hand models, about the grip's X, Y and Z axes, for fine tuning.
@@ -186,6 +191,13 @@ constexpr ScreenRect kRupeesRect = { 16, 176, 74, 52 };  // rupees and small key
 // The A button, whose label says what A does right now, and the B button beside it (its 32-pixel icons start at
 // x 186 and 160). The C buttons have no use in VR.
 constexpr ScreenRect kActionRect = { 156, 2, 66, 50 };
+// The minimap in the bottom right (the dungeon's at 204, 140 and the overworld's from 238, 164), shown on the right
+// palm when it's turned up to read.
+constexpr ScreenRect kMapRect = { 196, 128, 124, 108 };
+// A timer's clock and digits, from where the game puts it (timerX, timerY).
+constexpr ScreenRect kTimerSize = { 0, 0, 84, 24 };
+// The right palm counts as turned up past this (the palm's normal's height, 1 straight up).
+constexpr float kPalmUp = 0.6f;
 // The bow's or slingshot's ammo left, in the bottom middle, which the HUD itself leaves empty (see DrawAmmoCounter).
 constexpr ScreenRect kAmmoRect = { 116, 208, 88, 16 };
 constexpr int kTextboxHeight = 78;
@@ -264,6 +276,8 @@ constexpr float kNoRotation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
 // Watch faces on the back of each wrist, read along the forearm with the little finger side up.
 constexpr float kLeftWatchRotation[4] = { 0.5f, 0.5f, 0.5f, 0.5f };
 constexpr float kRightWatchRotation[4] = { 0.5f, -0.5f, -0.5f, 0.5f };
+// Facing out of the palm (-X), its top toward the fingers (+Y): a quarter turn about Y.
+constexpr float kPalmRotation[4] = { 0.0f, -0.7071068f, 0.0f, 0.7071068f };
 constexpr Vec3 kLeftWatchOffset = { 0.035f, -0.07f, 0.0f };
 constexpr Vec3 kRightWatchOffset = { -0.035f, -0.07f, 0.0f };
 
@@ -366,6 +380,9 @@ bool sWasStereo = false;
 
 bool sMessageShown = false;
 Pose sMessagePose;
+// A sign's text stands this far above its top and this far out toward the reader (meters).
+constexpr float kSignTextLift = 0.3f;
+constexpr float kSignTextOut = 0.15f;
 
 Gfx sOverlayBranchSaved;
 Gfx* sOverlayCutAt = nullptr;
@@ -389,6 +406,14 @@ Vec3 ToWorldAround(const float position[3], const Vec3f& anchor, float unitsPerM
 
 Vec3 ToWorld(const float position[3], const Vec3f& anchor, float unitsPerMeter) {
     return ToWorldAround(position, anchor, unitsPerMeter, sCenter[0], sCenter[1]);
+}
+
+// A point in the world, in the play space (meters), as of the tick being built: the reverse of ToWorld.
+void WorldToPlay(const Vec3f& world, float out[3]) {
+    Vec3 local = RotateYaw(-sYaw, { world.x - sBuild.anchor.x, world.y - sBuild.anchor.y, world.z - sBuild.anchor.z });
+    out[0] = local.x / sBuild.unitsPerMeter + sCenter[0];
+    out[1] = local.y / sBuild.unitsPerMeter - sSeatedLift;
+    out[2] = local.z / sBuild.unitsPerMeter + sCenter[1];
 }
 
 // Faces the play space the way Link faces and puts the player's current spot on him.
@@ -830,6 +855,14 @@ u16 OcarinaStickNotes(const float stick[2]) {
     return 0;
 }
 
+// Reeling by twisting the wrist (radians a second), and how long a twist keeps reeling (seconds).
+constexpr float kReelTwistSpeed = 5.0f;
+constexpr float kReelLinger = 0.25f;
+bool sReeling = false;
+float sReelFor = 0.0f;
+float sReelLastOrientation[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+bool sReelHadPose = false;
+
 u16 CurrentButtons() {
     const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
     const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
@@ -880,9 +913,9 @@ u16 CurrentButtons() {
         Runtime::Get().GetController(ControllerFor(LINK_LEFT)).triggerHeld) {
         buttons |= BTN_B;
     }
-    // Fishing, the trigger of the hand without the rod reels in, as A does.
+    // Fishing, the trigger of the hand without the rod reels in, as A does, and so does twisting that wrist.
     if (GET_PLAYER(gPlayState)->heldItemAction == PLAYER_IA_FISHING_POLE &&
-        Runtime::Get().GetController(ControllerFor(LINK_RIGHT)).triggerHeld) {
+        (Runtime::Get().GetController(ControllerFor(LINK_RIGHT)).triggerHeld || sReeling)) {
         buttons |= BTN_A;
     }
     // As a child the Hylian Shield is too big to hold, so crouching behind it is the game's own shield stance.
@@ -1024,15 +1057,52 @@ void CheckHookshotPull() {
 
 // Nocking the bow and pulling the hookshot's trigger each aim it afresh, as pressing its button again does, so
 // it can be used over and over without going back to the belt.
+// With the quiver on, the bow's string hand takes an arrow from over its shoulder, and needs one to nock; the arrow
+// leaves it when it's shot. The slingshot's seeds don't need taking.
+bool sArrowInHand = false;
+bool sQuiverGripLatched = false;
+
+bool UsesQuiver(Player* player) {
+    return CVarGetInteger(CVAR_VR_QUIVER, 1) && CurrentTool() == HeldTool::Bow && !Player_HoldsSlingshot(player);
+}
+
+bool HandOverShoulder(const Pose& hand);
+
+void UpdateQuiver() {
+    Player* player = GET_PLAYER(gPlayState);
+    const ControllerState& stringHand = Runtime::Get().GetController(ControllerFor(LINK_LEFT));
+    bool pressed = stringHand.gripHeld && !sQuiverGripLatched;
+    sQuiverGripLatched = stringHand.gripHeld;
+    if (!UsesQuiver(player)) {
+        sArrowInHand = false;
+        return;
+    }
+    if (pressed && !sArrowInHand && HandOverShoulder(stringHand.gripPose)) {
+        if (AMMO(ITEM_BOW) > 0) {
+            sArrowInHand = true;
+            Player_PlaySfx(&player->actor, NA_SE_PL_CHANGE_ARMS);
+            Runtime::Get().Vibrate(ControllerFor(LINK_LEFT), 0.4f, 0.05f);
+        } else {
+            Runtime::Get().Vibrate(ControllerFor(LINK_LEFT), 0.15f, 0.03f);
+        }
+    }
+}
+
 void UpdateDraw() {
     const Runtime& runtime = Runtime::Get();
     const ControllerState& stringHand = runtime.GetController(ControllerFor(LINK_LEFT));
     const ControllerState& bowHand = runtime.GetController(ControllerFor(LINK_RIGHT));
     HeldTool tool = CurrentTool();
     bool held = stringHand.triggerHeld;
+    bool quiver = UsesQuiver(GET_PLAYER(gPlayState));
     if (tool != HeldTool::Bow || !held) {
+        // Letting go shoots the arrow, which leaves the hand.
+        if (sDrawing && quiver) {
+            sArrowInHand = false;
+        }
         sDrawing = false;
-    } else if (!sDrawTriggerLatched && stringHand.gripPose.valid && bowHand.gripPose.valid) {
+    } else if (!sDrawTriggerLatched && stringHand.gripPose.valid && bowHand.gripPose.valid &&
+               (!quiver || sArrowInHand)) {
         float dx = stringHand.gripPose.position[0] - bowHand.gripPose.position[0];
         float dy = stringHand.gripPose.position[1] - bowHand.gripPose.position[1];
         float dz = stringHand.gripPose.position[2] - bowHand.gripPose.position[2];
@@ -1596,12 +1666,33 @@ void UpdateWorldGrabs() {
 // it until it's let go (see UpdateCarry). A while carrying still puts it down or throws it as the game does.
 bool sLiftGripLatched[HAND_COUNT] = {};
 
+// Silver rocks and the golden gauntlets' pillar are too heavy for one hand: both have to close on them.
+bool HeavyToLift(Actor* actor) {
+    return (actor->id == ACTOR_EN_ISHI && (actor->params & 1) == ROCK_LARGE) || actor->id == ACTOR_BG_HEAVY_BLOCK;
+}
+constexpr float kHeavyLiftReach = 45.0f; // game units from its middle; they're much bigger than a pot
+
+
 void UpdateLiftGrab() {
     Runtime& runtime = Runtime::Get();
     Player* player = GET_PLAYER(gPlayState);
     Actor* liftable = player->interactRangeActor;
     bool canLift = liftable != nullptr && player->getItemId == GI_NONE && player->heldActor == nullptr &&
                    !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR);
+    // Which hands are closed on it.
+    bool heavy = canLift && HeavyToLift(liftable);
+    float reach = heavy ? kHeavyLiftReach : kLiftReach;
+    bool onIt[HAND_COUNT] = {};
+    for (int hand = 0; hand < HAND_COUNT && canLift; hand++) {
+        const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
+        if (state.gripHeld && state.gripPose.valid) {
+            Vec3 world = ToWorld(state.gripPose.position, sBuild.anchor, sBuild.unitsPerMeter);
+            float dx = world.x - liftable->world.pos.x;
+            float dy = world.y - (liftable->world.pos.y + kLiftCenterHeight);
+            float dz = world.z - liftable->world.pos.z;
+            onIt[hand] = dx * dx + dy * dy + dz * dz < reach * reach;
+        }
+    }
     for (int hand = 0; hand < HAND_COUNT; hand++) {
         const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
         bool pressed = state.gripHeld && !sLiftGripLatched[hand];
@@ -1609,11 +1700,8 @@ void UpdateLiftGrab() {
         if (!pressed || !canLift || !state.gripPose.valid) {
             continue;
         }
-        Vec3 world = ToWorld(state.gripPose.position, sBuild.anchor, sBuild.unitsPerMeter);
-        float dx = world.x - liftable->world.pos.x;
-        float dy = world.y - (liftable->world.pos.y + kLiftCenterHeight);
-        float dz = world.z - liftable->world.pos.z;
-        if (dx * dx + dy * dy + dz * dz < kLiftReach * kLiftReach) {
+        // Something heavy goes up once the second hand closes on it too.
+        if (heavy ? (onIt[HAND_LEFT] && onIt[HAND_RIGHT]) : onIt[hand]) {
             PutLinkHandOn(LINK_RIGHT, static_cast<Hand>(hand));
             sLatchedButtons |= BTN_A;
             runtime.Vibrate(static_cast<Hand>(hand), 0.5f, 0.06f);
@@ -1738,6 +1826,8 @@ void UpdateBottle() {
 // the other hand's trigger reels in, as A does (see CurrentButtons).
 float sCastCooldown = 0.0f;
 
+float FrameStep();
+
 void UpdateFishing() {
     Runtime& runtime = Runtime::Get();
     if (sCastCooldown > 0.0f && runtime.GetRefreshRate() > 0) {
@@ -1747,11 +1837,216 @@ void UpdateFishing() {
         return;
     }
     Hand rod = ControllerFor(LINK_LEFT);
+    // Twisting the other hand's wrist back and forth, or round and round, winds the reel, as A does.
+    const Pose& reelHand = runtime.GetController(OtherHand(rod)).gripPose;
+    float dt = FrameStep();
+    if (reelHand.valid && sReelHadPose && dt > 0.0f) {
+        const float* q = reelHand.orientation;
+        float back[4] = { -sReelLastOrientation[0], -sReelLastOrientation[1], -sReelLastOrientation[2],
+                          sReelLastOrientation[3] };
+        float turn[4];
+        Multiply(back, q, turn);
+        // About the grip's Y, which runs along the forearm: a twist of the wrist.
+        float twist = 2.0f * fabsf(turn[1]) / dt;
+        if (twist > kReelTwistSpeed) {
+            sReelFor = kReelLinger;
+        }
+    }
+    sReelFor = std::max(sReelFor - dt, 0.0f);
+    sReeling = sReelFor > 0.0f;
+    sReelHadPose = reelHand.valid;
+    if (reelHand.valid) {
+        memcpy(sReelLastOrientation, reelHand.orientation, sizeof(sReelLastOrientation));
+    }
     if (sCastCooldown <= 0.0f && HandSpeed(rod) > kCastSpeed) {
         sLatchedButtons |= BTN_B;
         sCastCooldown = kCastCooldown;
         runtime.Vibrate(rod, 0.5f, 0.06f);
         SPDLOG_INFO("[VR] Cast the fishing rod");
+    }
+}
+
+// Navi can be touched: closing a hand on her talks to her, as L does (see UpdateNaviTouch).
+constexpr float kNaviTouchReach = 0.12f; // meters
+bool sNaviGripLatched[HAND_COUNT] = {};
+float sNaviCooldown = 0.0f;
+
+// Seconds since the last frame, for cooldowns.
+float FrameStep() {
+    uint32_t refresh = Runtime::Get().GetRefreshRate();
+    return refresh > 0 ? 1.0f / refresh : 0.0f;
+}
+
+void UpdateNaviTouch() {
+    sNaviCooldown = std::max(sNaviCooldown - FrameStep(), 0.0f);
+    Actor* navi = GET_PLAYER(gPlayState)->naviActor;
+    Runtime& runtime = Runtime::Get();
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
+        bool pressed = state.gripHeld && !sNaviGripLatched[hand];
+        sNaviGripLatched[hand] = state.gripHeld;
+        if (!pressed || navi == nullptr || !state.gripPose.valid || sNaviCooldown > 0.0f) {
+            continue;
+        }
+        float at[3];
+        WorldToPlay(navi->world.pos, at);
+        float dx = state.gripPose.position[0] - at[0];
+        float dy = state.gripPose.position[1] - at[1];
+        float dz = state.gripPose.position[2] - at[2];
+        if (dx * dx + dy * dy + dz * dz < kNaviTouchReach * kNaviTouchReach) {
+            sLatchedButtons |= BTN_L;
+            sNaviCooldown = 1.0f;
+            runtime.Vibrate(static_cast<Hand>(hand), 0.25f, 0.05f);
+            SPDLOG_INFO("[VR] Touched Navi");
+        }
+    }
+}
+
+// A trade item is given by holding it out to whoever's in front: the hand holding it reaching out past kGiveReach
+// (meters from the head) toward them, within kGiveAngle degrees, for kGiveHold seconds, shows it to them as its
+// button did.
+constexpr float kGiveReach = 0.42f;
+constexpr float kGiveAngle = 30.0f;
+constexpr float kGiveHold = 0.3f;
+float sGiveHeldFor = 0.0f;
+float sGiveCooldown = 0.0f;
+
+LinkHand ItemHand(u8 item);
+
+bool IsTradeItem(u8 item) {
+    bool mask = item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH;
+    return item >= ITEM_WEIRD_EGG && item <= ITEM_CLAIM_CHECK && !mask;
+}
+
+void UpdateGiving() {
+    sGiveCooldown = std::max(sGiveCooldown - FrameStep(), 0.0f);
+    Player* player = GET_PLAYER(gPlayState);
+    Actor* npc = player->talkActor;
+    u8 held = player->heldItemId;
+    const Pose& head = Runtime::Get().GetHead();
+    const Pose& hand = Runtime::Get().GetController(ControllerFor(ItemHand(held))).gripPose;
+    bool offered = false;
+    if (npc != nullptr && IsTradeItem(held) && head.valid && hand.valid && sGiveCooldown <= 0.0f) {
+        float at[3];
+        WorldToPlay(npc->focus.pos, at);
+        Vec3 out = { hand.position[0] - head.position[0], hand.position[1] - head.position[1],
+                     hand.position[2] - head.position[2] };
+        Vec3 toNpc = { at[0] - head.position[0], at[1] - head.position[1], at[2] - head.position[2] };
+        float reach = sqrtf(Dot(out, out));
+        offered = reach > kGiveReach && Dot(Normalized(out), Normalized(toNpc)) > cosf(DEG_TO_RAD(kGiveAngle));
+    }
+    sGiveHeldFor = offered ? sGiveHeldFor + FrameStep() : 0.0f;
+    if (sGiveHeldFor >= kGiveHold) {
+        RequestItem(VR_REQUEST_USE_HELD);
+        sGiveHeldFor = 0.0f;
+        sGiveCooldown = 2.0f;
+        Runtime::Get().Vibrate(ControllerFor(ItemHand(held)), 0.4f, 0.06f);
+        SPDLOG_INFO("[VR] Held out item {} to actor {}", held, npc->id);
+    }
+}
+
+// Dampé digs where a hand digs: near him, a hand low down and moving down fast (meters a second) asks him to, as
+// talking to him does.
+constexpr float kDampeReach = 150.0f; // game units
+constexpr float kDigSpeed = 1.8f;
+constexpr float kDigDrop = 0.7f; // meters below the head
+float sDigCooldown = 0.0f;
+
+void UpdateDigging() {
+    sDigCooldown = std::max(sDigCooldown - FrameStep(), 0.0f);
+    Player* player = GET_PLAYER(gPlayState);
+    Actor* dampe = nullptr;
+    for (Actor* actor = gPlayState->actorCtx.actorLists[ACTORCAT_NPC].head; actor != nullptr; actor = actor->next) {
+        if (actor->id == ACTOR_EN_TK && Math_Vec3f_DistXYZ(&actor->world.pos, &player->actor.world.pos) < kDampeReach) {
+            dampe = actor;
+        }
+    }
+    const Pose& head = Runtime::Get().GetHead();
+    if (dampe == nullptr || !head.valid || sDigCooldown > 0.0f) {
+        return;
+    }
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const Pose& grip = Runtime::Get().GetController(static_cast<Hand>(hand)).gripPose;
+        if (grip.valid && head.position[1] - grip.position[1] > kDigDrop &&
+            HandVelocity(static_cast<Hand>(hand)).y < -kDigSpeed) {
+            sLatchedButtons |= BTN_A;
+            sDigCooldown = 2.0f;
+            Runtime::Get().Vibrate(static_cast<Hand>(hand), 0.6f, 0.08f);
+            SPDLOG_INFO("[VR] Dug with Dampe");
+            return;
+        }
+    }
+}
+
+// Riding by the reins: on Epona with both grips closed, the hands are the reins. Held out, she goes, faster the
+// further out (meters ahead of the head along her facing); pulled in to the chest, she stops. The rein pulled back
+// further than the other turns her that way, and flicking both down together spurs her on, as A does.
+constexpr float kReinsFast = 0.35f;
+constexpr float kReinsWalk = 0.2f;
+constexpr float kReinsStop = 0.12f;
+constexpr float kReinsTurn = 0.15f; // meters of difference for a full turn
+constexpr float kFlickSpeed = 1.5f;  // meters a second down
+bool sReinsHeld = false;
+float sReinsStick[2] = {};
+float sFlickCooldown = 0.0f;
+
+void UpdateReins() {
+    sFlickCooldown = std::max(sFlickCooldown - FrameStep(), 0.0f);
+    Player* player = GET_PLAYER(gPlayState);
+    const Runtime& runtime = Runtime::Get();
+    const ControllerState& left = runtime.GetController(HAND_LEFT);
+    const ControllerState& right = runtime.GetController(HAND_RIGHT);
+    const Pose& head = runtime.GetHead();
+    sReinsHeld = (player->stateFlags1 & PLAYER_STATE1_ON_HORSE) && left.gripHeld && right.gripHeld &&
+                 left.gripPose.valid && right.gripPose.valid && head.valid && !Items_MenuOpen();
+    if (!sReinsHeld) {
+        return;
+    }
+    // Her facing, in the play space.
+    float yaw = BINANG_TO_RAD(player->actor.shape.rot.y);
+    Vec3 facing = RotateYaw(-sYaw, { sinf(yaw), 0.0f, cosf(yaw) });
+    auto ahead = [&](const Pose& grip) {
+        return (grip.position[0] - head.position[0]) * facing.x + (grip.position[2] - head.position[2]) * facing.z;
+    };
+    float leftAhead = ahead(left.gripPose);
+    float rightAhead = ahead(right.gripPose);
+    float out = (leftAhead + rightAhead) * 0.5f;
+    sReinsStick[1] = out > kReinsFast ? 1.0f : out > kReinsWalk ? 0.55f : out < kReinsStop ? -0.6f : 0.0f;
+    sReinsStick[0] = -std::clamp((rightAhead - leftAhead) / kReinsTurn, -1.0f, 1.0f);
+    if (sFlickCooldown <= 0.0f && HandVelocity(HAND_LEFT).y < -kFlickSpeed && HandVelocity(HAND_RIGHT).y < -kFlickSpeed) {
+        sLatchedButtons |= BTN_A;
+        sFlickCooldown = 0.6f;
+        Runtime::Get().Vibrate(HAND_LEFT, 0.5f, 0.05f);
+        Runtime::Get().Vibrate(HAND_RIGHT, 0.5f, 0.05f);
+        SPDLOG_INFO("[VR] Flicked the reins");
+    }
+}
+
+// Swimming up to a ledge, a hand reaching up onto it, ahead of the head and above it, climbs out as A does.
+bool sClimbOutGripLatched[HAND_COUNT] = {};
+
+void UpdateClimbOutOfWater() {
+    Player* player = GET_PLAYER(gPlayState);
+    const Pose& head = Runtime::Get().GetHead();
+    bool canClimb = Player_CanClimbOutOfWaterVr(player) && head.valid;
+    Vec3 forward = HeadForward();
+    float flat = sqrtf(forward.x * forward.x + forward.z * forward.z);
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const ControllerState& state = Runtime::Get().GetController(static_cast<Hand>(hand));
+        bool pressed = state.gripHeld && !sClimbOutGripLatched[hand];
+        sClimbOutGripLatched[hand] = state.gripHeld;
+        if (!pressed || !canClimb || !state.gripPose.valid || flat < 0.001f) {
+            continue;
+        }
+        float ahead = ((state.gripPose.position[0] - head.position[0]) * forward.x +
+                       (state.gripPose.position[2] - head.position[2]) * forward.z) /
+                      flat;
+        if (ahead > 0.15f && state.gripPose.position[1] > head.position[1] - 0.1f) {
+            sLatchedButtons |= BTN_A;
+            Runtime::Get().Vibrate(static_cast<Hand>(hand), 0.5f, 0.06f);
+            SPDLOG_INFO("[VR] Climbed out of the water by hand");
+            return;
+        }
     }
 }
 
@@ -2419,6 +2714,25 @@ void UpdateLens() {
     }
 }
 
+// An arrow taken from the quiver, held in the string hand pointing where it points, until it's nocked.
+constexpr float kArrowLength = 0.55f; // meters
+constexpr float kArrowWidth = 0.015f;
+
+void DrawArrowInHand(PlayState* play) {
+    const Pose& aim = Runtime::Get().GetController(ControllerFor(LINK_LEFT)).aimPose;
+    if (!sArrowInHand || sDrawing || !aim.valid) {
+        return;
+    }
+    Vec3 forward = Rotate(aim.orientation, { 0.0f, 0.0f, -1.0f });
+    float back[3] = { aim.position[0] - forward.x * 0.12f, aim.position[1] - forward.y * 0.12f,
+                      aim.position[2] - forward.z * 0.12f };
+    float front[3] = { back[0] + forward.x * kArrowLength, back[1] + forward.y * kArrowLength,
+                       back[2] + forward.z * kArrowLength };
+    Vec3 tail = ToWorld(back, sBuild.anchor, sBuild.unitsPerMeter);
+    Vec3 tip = ToWorld(front, sBuild.anchor, sBuild.unitsPerMeter);
+    Aim_DrawArrow(play, { tail.x, tail.y, tail.z }, { tip.x, tip.y, tip.z }, kArrowWidth * sBuild.unitsPerMeter);
+}
+
 // The readied spell's glow, between the hands and facing the head, growing as it's cast.
 void DrawReadySpell(PlayState* play) {
     if (sReadySpell == ITEM_NONE) {
@@ -2696,6 +3010,33 @@ bool BladeShapeFor(Player* player, float gameLength, BladeShape& out) {
 
 // The damage of a normal slash with each melee weapon, as D_80854488 in z_player.c gives it. Indexed by
 // Player_GetMeleeWeaponHeld: Master Sword, Kokiri Sword, Biggoron's Sword, Deku stick, hammer.
+// A blade moving slowly through an enemy's body pushes it along, by no more than kMaxShove game units a tick. Heavy
+// and immovable ones stand their ground.
+constexpr float kMaxShove = 3.0f;
+
+void ShoveEnemies(PlayState* play, Vec3f* tip, Vec3 move) {
+    float length = sqrtf(move.x * move.x + move.z * move.z);
+    if (length < 0.1f) {
+        return;
+    }
+    float push = std::min(length, kMaxShove) / length;
+    for (Actor* actor = play->actorCtx.actorLists[ACTORCAT_ENEMY].head; actor != nullptr; actor = actor->next) {
+        const CollisionCheckInfo& info = actor->colChkInfo;
+        if (actor->update == nullptr || info.cylRadius <= 0 || info.mass >= MASS_HEAVY) {
+            continue;
+        }
+        float dx = tip->x - actor->world.pos.x;
+        float dz = tip->z - actor->world.pos.z;
+        float bottom = actor->world.pos.y + info.cylYShift;
+        if (dx * dx + dz * dz < info.cylRadius * info.cylRadius && tip->y > bottom &&
+            tip->y < bottom + info.cylHeight) {
+            actor->world.pos.x += move.x * push;
+            actor->world.pos.z += move.z * push;
+            Runtime::Get().Vibrate(ControllerFor(LINK_LEFT), 0.3f, 0.03f);
+        }
+    }
+}
+
 u32 SlashDamageFlags(Player* player) {
     static const u32 kSlashFlags[] = { DMG_SLASH_MASTER, DMG_SLASH_KOKIRI, DMG_SLASH_GIANT, DMG_DEKU_STICK,
                                        DMG_HAMMER_SWING };
@@ -2952,6 +3293,12 @@ void Game_OnFrame() {
         UpdateBottle();
         UpdateFishing();
         UpdateTwoHanded();
+        UpdateQuiver();
+        UpdateNaviTouch();
+        UpdateGiving();
+        UpdateDigging();
+        UpdateReins();
+        UpdateClimbOutOfWater();
 
         // Closing either hand over the sword's shoulder (the sword hand's side) draws the sword into that hand, or
         // puts it back. Over the other shoulder it does the same with the shield, so either can be out alone.
@@ -2965,6 +3312,10 @@ void Game_OnFrame() {
             // While climbing, a hand reaching up past the shoulder is reaching for the next hold.
             if (!pressedNow || sSwordGestureCooldown > 0.0f || !HandOverShoulder(state.gripPose) ||
                 Climbing(GET_PLAYER(gPlayState))) {
+                continue;
+            }
+            // With the bow out, the string hand reaching over its shoulder takes an arrow (see UpdateQuiver).
+            if (UsesQuiver(GET_PLAYER(gPlayState)) && hand == ControllerFor(LINK_LEFT)) {
                 continue;
             }
             bool swordOnRight = CVarGetInteger(CVAR_VR_SWORD_IN_RIGHT_HAND, 0) != 0;
@@ -3040,6 +3391,32 @@ void Game_OnFrame() {
     // level, under the face of whoever's talking.
     if (sRender.message && !sMessageShown) {
         sMessagePose = PanelInFront(1.0f, kMessageDrop);
+        // A sign's or gossip stone's words are written over it, where it stands.
+        Actor* speaker = gPlayState != nullptr ? GET_PLAYER(gPlayState)->talkActor : nullptr;
+        const Pose& reader = Runtime::Get().GetHead();
+        if (speaker != nullptr && (speaker->id == ACTOR_EN_KANBAN || speaker->id == ACTOR_EN_GS) && reader.valid) {
+            Vec3f above = { speaker->focus.pos.x, speaker->focus.pos.y + kSignTextLift * sBuild.unitsPerMeter,
+                            speaker->focus.pos.z };
+            float at[3];
+            WorldToPlay(above, at);
+            float dx = reader.position[0] - at[0];
+            float dz = reader.position[2] - at[2];
+            float length = sqrtf(dx * dx + dz * dz);
+            if (length > 0.001f) {
+                // A little toward the reader, so it isn't inside the sign.
+                at[0] += dx / length * kSignTextOut;
+                at[2] += dz / length * kSignTextOut;
+                float yaw = atan2f(dx, dz);
+                sMessagePose.position[0] = at[0];
+                sMessagePose.position[1] = at[1];
+                sMessagePose.position[2] = at[2];
+                sMessagePose.orientation[0] = 0.0f;
+                sMessagePose.orientation[1] = sinf(yaw * 0.5f);
+                sMessagePose.orientation[2] = 0.0f;
+                sMessagePose.orientation[3] = cosf(yaw * 0.5f);
+                sMessagePose.valid = true;
+            }
+        }
     }
     sMessageShown = sRender.message;
 }
@@ -3221,6 +3598,23 @@ void Game_GetHudQuads(std::vector<HudQuad>& out) {
         out.push_back(MakeQuad(Attach(rightGrip, kRightWatchOffset, kRightWatchRotation),
                                0.05f * kActionRect.w / 46.0f, kActionRect));
     }
+    // A running timer under the hearts, on the left wrist.
+    bool timing = gSaveContext.timerState != 0 || gSaveContext.subTimerState != 0;
+    if (left.gripPose.valid && timing) {
+        int timer = gSaveContext.timerState != 0 ? TIMER_ID_MAIN : TIMER_ID_SUB;
+        int x = std::clamp(static_cast<int>(gSaveContext.timerX[timer]) - 4, 0, SCREEN_WIDTH - kTimerSize.w);
+        int y = std::clamp(static_cast<int>(gSaveContext.timerY[timer]) - 4, 0, SCREEN_HEIGHT - kTimerSize.h);
+        Pose watch = Attach(GripFrame(left.gripPose), kLeftWatchOffset, kLeftWatchRotation);
+        out.push_back(MakeQuad(Attach(watch, { 0.028f, -0.03f, 0.0f }, kNoRotation), 0.07f,
+                               { x, y, kTimerSize.w, kTimerSize.h }));
+    }
+    // The minimap on the right palm, while it's turned up to read.
+    if (right.gripPose.valid) {
+        Pose palm = GripFrame(right.gripPose);
+        if (Rotate(palm.orientation, { -1.0f, 0.0f, 0.0f }).y > kPalmUp) {
+            out.push_back(MakeQuad(Attach(palm, { -0.04f, 0.03f, 0.0f }, kPalmRotation), 0.11f, kMapRect));
+        }
+    }
     // The ammo left (see DrawAmmoCounter) on the back of the hand holding the bow or slingshot, past that wrist's
     // own panel toward the knuckles.
     if (CurrentTool() == HeldTool::Bow) {
@@ -3338,6 +3732,11 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
     if (x * x + y * y > SohVr::kStickDeadzone * SohVr::kStickDeadzone) {
         pads[0].stick_x = static_cast<int8_t>(lroundf(std::clamp(x, -1.0f, 1.0f) * SohVr::kStickRange));
         pads[0].stick_y = static_cast<int8_t>(lroundf(std::clamp(y, -1.0f, 1.0f) * SohVr::kStickRange));
+    }
+    // Holding the reins, they're the stick, relative to the way Epona faces (see UpdateReins and Vr_GetInputDir).
+    if (SohVr::sReinsHeld && Vr_IsWorldStereo()) {
+        pads[0].stick_x = static_cast<int8_t>(lroundf(SohVr::sReinsStick[0] * SohVr::kStickRange));
+        pads[0].stick_y = static_cast<int8_t>(lroundf(SohVr::sReinsStick[1] * SohVr::kStickRange));
     }
     // Swimming strokes swim, the way the head looks, while the stick is left alone (see UpdateSwimStrokes).
     if (SohVr::sSwimThrust > 0.1f && Vr_IsWorldStereo() && x * x + y * y <= SohVr::kStickDeadzone * SohVr::kStickDeadzone) {
@@ -3479,6 +3878,7 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
         SohVr::DrawHeldLens(play);
         SohVr::sRecordingHand = -1;
         SohVr::DrawReadySpell(play);
+        SohVr::DrawArrowInHand(play);
         DrawAmmoCounter(play);
         SohVr::Aim_DrawShotMarker(play, player);
     }
@@ -3539,6 +3939,10 @@ extern "C" bool Vr_GetInputDir(Vec3s* dst) {
     SohVr::Vec3 forward = SohVr::RotateYaw(SohVr::sYaw, SohVr::HeadForward());
     dst->x = 0;
     dst->y = RADF_TO_BINANG(atan2f(forward.x, forward.z));
+    // Holding the reins, they steer relative to Epona.
+    if (SohVr::sReinsHeld) {
+        dst->y = GET_PLAYER(gPlayState)->actor.shape.rot.y;
+    }
     dst->z = 0;
     return true;
 }
@@ -3749,9 +4153,16 @@ extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
     sLastMove = move;
     sHasLastTip = true;
 
-    // A hit from last tick ends the damage for the rest of the swing.
+    // A hit from last tick ends the damage for the rest of the swing. So does the blade glancing off a shield or
+    // another blade (a Stalfos', an Iron Knuckle's, Dark Link's), which rings, sparks and jolts the hand.
     for (ColliderQuad& quad : player->meleeWeaponQuads) {
-        if (SohVr::sSwingActive && (quad.base.atFlags & AT_HIT)) {
+        if (SohVr::sSwingActive && (quad.base.atFlags & AT_BOUNCED)) {
+            quad.base.atFlags &= ~(AT_BOUNCED | AT_HIT);
+            SohVr::sSwingHit = true;
+            CollisionCheck_SpawnShieldParticlesMetal(gPlayState, tip);
+            Player_PlaySfx(&player->actor, NA_SE_IT_SHIELD_REFLECT_SW);
+            SohVr::Runtime::Get().Vibrate(SohVr::ControllerFor(SohVr::LINK_LEFT), 1.0f, 0.15f);
+        } else if (SohVr::sSwingActive && (quad.base.atFlags & AT_HIT)) {
             SohVr::sSwingHit = true;
             quad.base.atFlags &= ~AT_HIT;
             SohVr::Runtime::Get().Vibrate(SohVr::ControllerFor(SohVr::LINK_LEFT), 0.9f, 0.08f);
@@ -3778,12 +4189,36 @@ extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
     }
 
     bool live = SohVr::sSwingActive && !SohVr::sSwingHit;
+    // Which attack the swing is, by the way the blade moves: along itself it's a thrust (a stab), mostly up or down
+    // a vertical slash, and otherwise a horizontal one, as enemies that guard or dodge by the attack see it.
+    // Swinging down while in the air is a jump attack.
+    bool jumpAttack = false;
+    if (live && player->meleeWeaponState == 0 && travel > 0.0f) {
+        WeaponInfo& blade = player->meleeWeaponInfo[0];
+        SohVr::Vec3 along = SohVr::Normalized(
+            { blade.tip.x - blade.base.x, blade.tip.y - blade.base.y, blade.tip.z - blade.base.z });
+        SohVr::Vec3 way = SohVr::Normalized(move);
+        s32 attack = SohVr::Dot(way, along) > 0.7f ? PLAYER_MWA_STAB_1H
+                     : fabsf(way.y) > 0.6f         ? PLAYER_MWA_FORWARD_SLASH_1H
+                                                   : PLAYER_MWA_RIGHT_SLASH_1H;
+        jumpAttack = !(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && way.y < -0.6f;
+        if (jumpAttack) {
+            attack = PLAYER_MWA_JUMPSLASH_FINISH;
+        } else if (Player_HoldsTwoHandedWeapon(player)) {
+            attack++; // each 1H attack's 2H form follows it
+        }
+        player->meleeWeaponAnimation = attack;
+    }
+    // A blade moving slowly through an enemy's body pushes it aside.
+    if (!live && travel > 0.0f) {
+        SohVr::ShoveEnemies(gPlayState, tip, move);
+    }
     // During the game's own attacks its damage stays as it set it. A spin made by turning hits as a spin, and a
-    // very hard swing as hard as a jump attack.
+    // very hard swing, or one down from the air, as hard as a jump attack.
     if (live && player->meleeWeaponState == 0) {
-        u32 damage = SohVr::sPhysicalSpinLeft > 0.0f       ? SohVr::SpinDamageFlags(player)
-                     : speed >= SohVr::kHeavySwingSpeed ? SohVr::HeavyDamageFlags(player)
-                                                        : SohVr::SlashDamageFlags(player);
+        u32 damage = SohVr::sPhysicalSpinLeft > 0.0f                     ? SohVr::SpinDamageFlags(player)
+                     : (speed >= SohVr::kHeavySwingSpeed || jumpAttack) ? SohVr::HeavyDamageFlags(player)
+                                                                        : SohVr::SlashDamageFlags(player);
         for (ColliderQuad& quad : player->meleeWeaponQuads) {
             quad.info.toucher.dmgFlags = damage;
             quad.info.toucherFlags = TOUCH_ON | TOUCH_NEAREST;
@@ -4274,6 +4709,21 @@ extern "C" bool Vr_LaunchThrownNut(Actor* nut) {
     nut->velocity.y = v.y;
     nut->gravity = -1.2f;
     return true;
+}
+
+extern "C" f32 Vr_FairyFade(Vec3f* pos) {
+    if (!Vr_IsWorldStereo() || gPlayState == nullptr) {
+        return 1.0f;
+    }
+    // Fully faded within kFairyFadeNear meters of the eyes, as usual past kFairyFadeFar.
+    constexpr float kFairyFadeNear = 0.15f;
+    constexpr float kFairyFadeFar = 0.6f;
+    float meters = Math_Vec3f_DistXYZ(pos, &gPlayState->view.eye) / SohVr::sBuild.unitsPerMeter;
+    return std::clamp((meters - kFairyFadeNear) / (kFairyFadeFar - kFairyFadeNear), 0.15f, 1.0f);
+}
+
+extern "C" f32 Vr_WallRadiusScale(void) {
+    return (Vr_IsWorldStereo() && CVarGetInteger(CVAR_VR_CLOSE_TO_WALLS, 1)) ? 0.75f : 1.0f;
 }
 
 extern "C" s32 Vr_DrawDistance(void) {

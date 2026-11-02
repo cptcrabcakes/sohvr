@@ -66,7 +66,7 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | - | - |
 | Draw or put away the sword | Reach over your sword hand's shoulder and squeeze the grip |
 | Take out or put away the shield | Reach over your other shoulder and squeeze the grip. The sword and shield come out separately, so you can hold just one. |
-| Attack | Swing the sword. A very hard swing hits as hard as a jump attack. A blade swung into a wall or the floor sparks and stops, which wears out the Deku stick and Biggoron's Sword as the game's own hits do, and the Megaton Hammer swung into the ground shakes it, which some switches answer to. |
+| Attack | Swing the sword. Sideways, overhead and thrusting swings are the game's horizontal, vertical and stab attacks, which enemies that guard or dodge react to, and a downward swing in the air or a very hard swing hits as hard as a jump attack. Your blade rings and sparks off shields and other blades, and pushes enemies aside when it's moved slowly through them. A blade swung into a wall or the floor sparks and stops, which wears out the Deku stick and Biggoron's Sword as the game's own hits do, and the Megaton Hammer swung into the ground shakes it, which some switches answer to. |
 | Spin attack | Hold your sword hand's trigger to charge, and let go to spin: the sword sweeps around you. Or turn around for real, most of the way, with the sword held out. |
 | Block | Hold the shield where the attack is coming from |
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. The first ring's groups: Ranged & Tools, Explosives & Heavy, Magic & Spells (with the magic arrows), Bottles & Consumables, Quest & Lore, Equipment & Gear, and System (the ship). |
@@ -91,6 +91,16 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
 | Play the ocarina | Whistle, hum or sing its notes (D, F, A, B and the high D) into your headset's microphone, in any octave; how far off the note you are bends it, as the stick does. A note started again after a breath plays again. A and the right stick (up, down, left, right) play the notes too, and X and Y also play C-left and C-right. The right stick doesn't turn you while the ocarina is up. The microphone is only open while the ocarina is out; Whistle Ocarina Notes turns it off. |
 | Pause | Y, then the System section (the ship), then the map; or click the left stick |
+| Read the map | Turn your right palm up: the minimap is on it. A running timer shows on your left wrist. |
+| Read a sign | Its words appear over it, where it stands (gossip stones too) |
+| Talk to Navi | Close a hand on her, or push the right stick down. She fades when she flies close to your face. |
+| Give someone a trade item | Hold it out toward them for a moment |
+| Ride Epona by the reins | Close both grips in front of you. Hold them out to go (further out is faster), pull them in to stop, pull one rein back to turn that way, and flick both down to spur her on. |
+| Dig with Dampé | Dig: a hand low down, scooping down fast, near him |
+| Reel in a fish | Twist your free wrist, or pull its trigger |
+| Lift a silver rock or the golden gauntlets' pillar | Close both hands on it |
+| Climb out of the water | Reach up onto the ledge ahead and squeeze the grip |
+| Take an arrow | With the bow out, reach over your drawing hand's shoulder and squeeze the grip, then nock it at the bow as usual (Arrows from a Quiver). |
 | Change VR settings | Y, then the System section (the ship), then the compass. Point at a row and pull the trigger: switches flip, and numbers and choices go down on the row's left half and up on its right half, repeating while you hold. More Settings turns to the second page and Back returns. Y or Close puts it away. |
 
 The game's lessons on its buttons (what each item you find does, the Kokiri Forest signs and lessons, Navi's first words, the shields, the horse) say what to do in VR instead; VR Tutorials turns this off. On the floating screen they're the game's own.

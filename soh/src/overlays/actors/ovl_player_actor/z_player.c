@@ -5051,6 +5051,13 @@ void func_808389E8(Player* this, LinkAnimationHeader* anim, f32 arg2, PlayState*
     func_80838940(this, anim, arg2, play, NA_SE_VO_LI_SWORD_N);
 }
 
+// VR: whether Link, swimming near the surface, has a ledge he can climb out onto, as A would.
+s32 Player_CanClimbOutOfWaterVr(Player* this) {
+    return !(this->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) && (this->ledgeClimbType >= 2) &&
+           (this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->ageProperties->unk_14 > this->yDistToLedge) &&
+           (this->actor.yDistToWater < 50.0f) && (this->yDistToLedge <= this->ageProperties->unk_10);
+}
+
 s32 Player_ActionHandler_12(Player* this, PlayState* play) {
     s32 sp3C;
     LinkAnimationHeader* anim;
@@ -11354,6 +11361,8 @@ void Player_ProcessSceneCollision(PlayState* play, Player* this) {
     }
 
     Math_Vec3f_Copy(&unusedWorldPos, &this->actor.world.pos);
+    // In VR Link keeps a little closer to walls, so the player's eyes can come up to them.
+    vWallCheckRadius *= Vr_WallRadiusScale();
     Actor_UpdateBgCheckInfo(play, &this->actor, vWallCheckHeight, vWallCheckRadius, ceilingCheckHeight, flags);
 
     if (this->actor.bgCheckFlags & 0x10) {

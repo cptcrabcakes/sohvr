@@ -5,6 +5,7 @@
  */
 
 #include "z_en_elf.h"
+#include "soh/Enhancements/vr/Vr.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include <assert.h>
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
@@ -1516,6 +1517,8 @@ void EnElf_Draw(Actor* thisx, PlayState* play) {
             envAlpha = (envAlpha > 255) ? 511 - envAlpha : envAlpha;
 
             alphaScale = this->disappearTimer < 0 ? (this->disappearTimer * (7.0f / 6000.0f)) + 1.0f : 1.0f;
+            // In VR a fairy close to the eyes fades.
+            alphaScale *= Vr_FairyFade(&this->actor.world.pos);
 
             gSPSegment(POLY_XLU_DISP++, 0x08, dListHead);
             gDPPipeSync(dListHead++);

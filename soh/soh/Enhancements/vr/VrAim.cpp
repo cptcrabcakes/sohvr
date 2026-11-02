@@ -237,6 +237,13 @@ bool FlyShot(PlayState* play, Vec3f origin, Vec3f direction, bool seed, float po
 
 } // namespace
 
+void Aim_DrawArrow(PlayState* play, const Vec3f& tail, const Vec3f& tip, float width) {
+    // The last tenth is the head.
+    Vec3f neck = { tail.x + (tip.x - tail.x) * 0.9f, tail.y + (tip.y - tail.y) * 0.9f, tail.z + (tip.z - tail.z) * 0.9f };
+    DrawBeam(play, tail, neck, width, { 150, 105, 60, 255 });
+    DrawBeam(play, neck, tip, width * 1.8f, { 200, 200, 210, 255 });
+}
+
 void Aim_DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, float width,
                   Color_RGBA8 color) {
     DrawRing(play, center, normal, radius, width, color);

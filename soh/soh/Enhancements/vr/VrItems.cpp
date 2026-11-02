@@ -641,13 +641,20 @@ const PanelRow kPlayRows[] = {
     OnRow("ARMS TO SWIM", CVAR_SETTING("VR.SwimStrokes")),
     OnRow("NOD TO ANSWER", CVAR_SETTING("VR.HeadAnswers")),
     OnRow("VR TUTORIALS", CVAR_SETTING("VR.Guidance")),
-    ActionRow("< BACK", RowKind::Page),
+    ActionRow("MORE SETTINGS >", RowKind::Page),
     ActionRow("CLOSE", RowKind::Close),
 };
-constexpr int kPanelPageCount = 2;
-const PanelRow* const kPanelPages[kPanelPageCount] = { kComfortRows, kPlayRows };
+const PanelRow kMoreRows[] = {
+    OnRow("QUIVER", CVAR_SETTING("VR.Quiver")),
+    OnRow("CLOSE TO WALLS", CVAR_SETTING("VR.CloseToWalls")),
+    ActionRow("< FIRST PAGE", RowKind::Page),
+    ActionRow("CLOSE", RowKind::Close),
+};
+constexpr int kPanelPageCount = 3;
+const PanelRow* const kPanelPages[kPanelPageCount] = { kComfortRows, kPlayRows, kMoreRows };
 constexpr int kPanelPageRows[kPanelPageCount] = { sizeof(kComfortRows) / sizeof(kComfortRows[0]),
-                                                  sizeof(kPlayRows) / sizeof(kPlayRows[0]) };
+                                                  sizeof(kPlayRows) / sizeof(kPlayRows[0]),
+                                                  sizeof(kMoreRows) / sizeof(kMoreRows[0]) };
 
 struct Panel {
     bool open = false;
@@ -1272,7 +1279,8 @@ void DrawPanel(PlayState* play) {
     GfxPrint_Init(&printer);
     GfxPrint_Open(&printer, overlay);
     GfxPrint_SetColor(&printer, 255, 230, 120, 255);
-    const char* title = sPanel.page == 0 ? "VR SETTINGS" : "VR SETTINGS 2";
+    const char* const titles[kPanelPageCount] = { "VR SETTINGS", "VR SETTINGS 2", "VR SETTINGS 3" };
+    const char* title = titles[sPanel.page];
     GfxPrint_SetPosPx(&printer, kPanelX + (kPanelW - static_cast<int>(strlen(title)) * 8) / 2, kPanelY + 8);
     GfxPrint_Printf(&printer, "%s", title);
     int rowCount;

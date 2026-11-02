@@ -48,7 +48,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | - | - |
 | Draw or put away the sword | Reach over your sword hand's shoulder and squeeze the grip |
 | Take out or put away the shield | Reach over your other shoulder and squeeze the grip. The sword and shield come out separately, so you can hold just one. |
-| Attack | Swing the sword. Swing hard for a jump attack's damage. The blade sparks and stops against walls, and the hammer shakes the ground. |
+| Attack | Swing the sword: sideways, overhead or thrusting, which enemies react to. Swing hard, or down from a jump, for a jump attack's damage. The blade sparks against walls and clashes with other blades, and the hammer shakes the ground. |
 | Spin attack | Hold your sword hand's trigger to charge, let go to spin; or turn around for real with the sword held out |
 | Block | Hold the shield where the attack is coming from |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |

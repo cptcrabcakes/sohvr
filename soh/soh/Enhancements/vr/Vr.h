@@ -82,6 +82,13 @@ s32 Vr_ShieldOut(Player* player);
 // How many times further than usual things stay drawn: the VR Draw Distance setting while the world is shown in VR,
 // otherwise 1.
 s32 Vr_DrawDistance(void);
+// How much of his usual distance Link keeps from walls: in VR less, so the player's eyes can come up to them.
+f32 Vr_WallRadiusScale(void);
+// How see-through a fairy is drawn, 1 being as usual: in VR one close to the eyes fades, so Navi doesn't fill the
+// view as she flies around Link's head.
+f32 Vr_FairyFade(Vec3f* pos);
+// In z_player.c: whether Link, swimming, has a ledge he can climb out onto, as A would.
+s32 Player_CanClimbOutOfWaterVr(Player* player);
 // Whether the hookshot's hook is out of it, flying or coming back, so it's drawn at the end of its chain and not on
 // the hookshot in the hand. False outside VR.
 bool Vr_HookOut(Actor* hook);
