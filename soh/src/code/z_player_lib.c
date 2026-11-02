@@ -1596,6 +1596,7 @@ void func_800906D4(PlayState* play, Player* this, Vec3f* newTipPos) {
         func_80090480(play, NULL, &this->meleeWeaponInfo[1], &newTipPos[1], &newBasePos[1]);
         func_80090480(play, NULL, &this->meleeWeaponInfo[2], &newTipPos[2], &newBasePos[2]);
     }
+    Vr_SwordAfterUpdate(play, this);
 }
 
 void Player_DrawGetItemIceTrap(PlayState* play, Player* this, Vec3f* refPos, s32 drawIdPlusOne, f32 height) {

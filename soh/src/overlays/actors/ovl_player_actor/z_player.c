@@ -15225,6 +15225,11 @@ void Player_UpdateBunnyEars(Player* this) {
 }
 
 s32 Player_ActionHandler_7(Player* this, PlayState* play) {
+    // In VR, squeezing the sword hand's grip charges a spin attack, as holding B does after a slash.
+    if (Vr_TakeSpinCharge(this)) {
+        func_808377DC(play, this);
+        return 1;
+    }
     if (func_8083C6B8(play, this) == 0) {
         if (func_8083BB20(this) != 0) {
             s32 sp24 = func_80837818(this);

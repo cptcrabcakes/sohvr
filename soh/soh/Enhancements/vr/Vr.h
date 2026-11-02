@@ -74,6 +74,12 @@ bool Vr_SwordSwing(Player* player, Vec3f* tip);
 bool Vr_HoldsShield(Player* player);
 // Passes the game's controller rumble on to the VR controllers.
 void Vr_Rumble(bool on);
+// Whether the sword hand's grip just asked to charge a spin attack (see UpdateSpinAttack). Called from the player's
+// sword attack handler, which starts the charge.
+bool Vr_TakeSpinCharge(Player* player);
+// After the blade's position is updated each tick: a swung blade striking a wall or the floor sparks and stops,
+// and the hammer shakes the ground, as the game's own attacks do.
+void Vr_SwordAfterUpdate(PlayState* play, Player* player);
 
 // What the player asked for with gestures, for the player's own update to carry out. Item ids below 0x100 ask
 // to take that item out.

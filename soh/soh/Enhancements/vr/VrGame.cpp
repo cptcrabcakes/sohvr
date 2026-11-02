@@ -23,6 +23,10 @@ extern "C" {
 s32 func_8083501C(Player* thisx, PlayState* play);
 s32 func_808351D4(Player* thisx, PlayState* play);
 s32 func_808353D8(Player* thisx, PlayState* play);
+// The game's own reactions to its blade hitting something hard: the hammer's quake, and wearing out the Deku stick
+// and Biggoron's Sword.
+void func_80842A28(PlayState* play, Player* thisx);
+void func_80842CF0(PlayState* play, Player* thisx);
 s32 Player_UpperAction_ChangeHeldItem(Player* thisx, PlayState* play);
 void ArmsHook_Wait(ArmsHook* thisx, PlayState* play);
 void ArmsHook_Shoot(ArmsHook* thisx, PlayState* play);
@@ -78,6 +82,15 @@ constexpr float kSwingStartSpeed = 2.5f;
 constexpr float kSwingMinHandSpeed = 1.2f;
 constexpr float kSwingMinTravel = 0.3f;
 constexpr float kSwingStopSpeed = 1.0f;
+// A swing this fast (meters a second at the tip) hits as hard as a jump attack.
+constexpr float kHeavySwingSpeed = 7.0f;
+// A swung blade striking a wall or the floor at least this fast sparks and stops (meters a second at the tip).
+constexpr float kWallStrikeSpeed = 1.5f;
+// Turning around this far (degrees) within the spin time (seconds), with the sword hand out this far from the head
+// (meters), is a spin attack.
+constexpr float kPhysicalSpinDegrees = 300.0f;
+constexpr float kPhysicalSpinSeconds = 1.2f;
+constexpr float kSpinReach = 0.3f;
 constexpr int kSwingCooldownTicks = 8;
 // Doors and chests open by hand. A hand closing on a door (within the depth of its plane, half its width across
 // and its height, in game units) and then pushing or pulling it the push distance (meters) opens it; so does one
@@ -799,6 +812,11 @@ u16 CurrentButtons() {
     }
     buttons |= (left.triggerHeld && !triggerTaken[HAND_LEFT]) ? BTN_Z : 0;
     buttons |= sBlockHeld ? BTN_A : 0;
+    // A spin attack charges for as long as the sword hand's grip stays squeezed, as B held does.
+    if ((GET_PLAYER(gPlayState)->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK) &&
+        Runtime::Get().GetController(ControllerFor(LINK_LEFT)).gripHeld) {
+        buttons |= BTN_B;
+    }
     // Fishing, the trigger of the hand without the rod reels in, as A does.
     if (GET_PLAYER(gPlayState)->heldItemAction == PLAYER_IA_FISHING_POLE &&
         Runtime::Get().GetController(ControllerFor(LINK_RIGHT)).triggerHeld) {
@@ -1305,6 +1323,10 @@ void UpdateWorldGrabs() {
             grab.actor = nullptr;
         }
     }
+}
+
+bool HandOnDoorOrChest(Hand hand) {
+    return sWorldGrab[hand].actor != nullptr;
 }
 
 // Pots, rocks, bomb flowers and the like, which the game offers Link to lift with A (offered with no item, unlike
@@ -2088,6 +2110,96 @@ u32 SlashDamageFlags(Player* player) {
     return (weapon >= 1 && weapon <= 5) ? kSlashFlags[weapon - 1] : DMG_SLASH_KOKIRI;
 }
 
+// What a very hard swing does: a jump attack's damage. The Deku stick has none of its own.
+u32 HeavyDamageFlags(Player* player) {
+    static const u32 kHeavyFlags[] = { DMG_JUMP_MASTER, DMG_JUMP_KOKIRI, DMG_JUMP_GIANT, DMG_DEKU_STICK,
+                                       DMG_HAMMER_JUMP };
+    s32 weapon = Player_HoldsBrokenKnife(player) ? 2 : Player_GetMeleeWeaponHeld(player);
+    return (weapon >= 1 && weapon <= 5) ? kHeavyFlags[weapon - 1] : DMG_JUMP_KOKIRI;
+}
+
+// A spin attack's damage, for a spin made by turning around for real.
+u32 SpinDamageFlags(Player* player) {
+    static const u32 kSpinFlags[] = { DMG_SPIN_MASTER, DMG_SPIN_KOKIRI, DMG_SPIN_GIANT };
+    s32 weapon = Player_HoldsBrokenKnife(player) ? 2 : Player_GetMeleeWeaponHeld(player);
+    return (weapon >= 1 && weapon <= 3) ? kSpinFlags[weapon - 1] : SlashDamageFlags(player);
+}
+
+// Spin attacks. Squeezing the sword hand's grip (away from the shoulder, which draws and sheathes the sword, and not
+// on a door or chest) charges one, as holding B does, and letting go spins: the game's spin sweeps the sword around
+// Link, which in VR means around the player. Turning around for real with the sword held out is a spin attack too:
+// the sword swung around with the player hits with a spin's damage.
+bool sSpinChargeRequested = false;
+bool sSpinGripLatched = false;
+float sSpinTurned = 0.0f;   // degrees the head has turned one way in the current turn
+float sSpinTurnTime = 0.0f; // seconds the current turn has taken
+float sLastHeadYaw = 0.0f;
+bool sHasLastHeadYaw = false;
+float sPhysicalSpinLeft = 0.0f; // seconds a spin by turning keeps a spin's damage
+float sTipSpeed = 0.0f;         // meters a second, as of the last tick
+
+bool HoldsSword(Player* player) {
+    s32 weapon = Player_GetMeleeWeaponHeld(player);
+    return weapon >= 1 && weapon <= 3;
+}
+
+bool HandOnDoorOrChest(Hand hand);
+
+void UpdateSpinAttack() {
+    Runtime& runtime = Runtime::Get();
+    Player* player = GET_PLAYER(gPlayState);
+    Hand swordHand = ControllerFor(LINK_LEFT);
+    const ControllerState& state = runtime.GetController(swordHand);
+    bool pressed = state.gripHeld && !sSpinGripLatched;
+    sSpinGripLatched = state.gripHeld;
+    bool charging = player->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK;
+    if (pressed && HoldsSword(player) && !charging && player->meleeWeaponState == 0 && !Items_MenuOpen() &&
+        state.gripPose.valid && !HandOverShoulder(state.gripPose) && !HandOnDoorOrChest(swordHand) &&
+        (player->actor.bgCheckFlags & 1)) {
+        sSpinChargeRequested = true;
+    } else if (!state.gripHeld) {
+        sSpinChargeRequested = false;
+    }
+
+    // A spin by turning: how far the head has turned one way, and how long it took.
+    uint32_t refresh = runtime.GetRefreshRate();
+    float dt = refresh > 0 ? 1.0f / refresh : 0.0f;
+    sPhysicalSpinLeft = std::max(sPhysicalSpinLeft - dt, 0.0f);
+    const Pose& head = runtime.GetHead();
+    if (!head.valid || dt == 0.0f) {
+        sHasLastHeadYaw = false;
+        return;
+    }
+    Vec3 forward = HeadForward();
+    float yaw = atan2f(forward.x, forward.z) * (180.0f / static_cast<float>(M_PI));
+    if (sHasLastHeadYaw) {
+        float turned = remainderf(yaw - sLastHeadYaw, 360.0f);
+        if (turned * sSpinTurned < 0.0f || fabsf(turned) < 0.5f) {
+            sSpinTurned = 0.0f; // stopped, or turned back
+            sSpinTurnTime = 0.0f;
+        }
+        sSpinTurned += turned;
+        sSpinTurnTime += dt;
+        if (sSpinTurnTime > kPhysicalSpinSeconds) {
+            sSpinTurned = 0.0f;
+            sSpinTurnTime = 0.0f;
+        }
+    }
+    sLastHeadYaw = yaw;
+    sHasLastHeadYaw = true;
+    float reach = hypotf(state.gripPose.position[0] - head.position[0], state.gripPose.position[2] - head.position[2]);
+    if (fabsf(sSpinTurned) >= kPhysicalSpinDegrees && HoldsSword(player) && state.gripPose.valid &&
+        reach >= kSpinReach) {
+        sSpinTurned = 0.0f;
+        sSpinTurnTime = 0.0f;
+        sPhysicalSpinLeft = 0.6f;
+        Player_PlaySfx(&player->actor, NA_SE_IT_ROLLING_CUT);
+        Player_PlaySfx(&player->actor, NA_SE_VO_LI_SWORD_L);
+        runtime.Vibrate(swordHand, 0.8f, 0.2f);
+        SPDLOG_INFO("[VR] Spin attack by turning around");
+    }
+}
+
 HudQuad MakeQuad(const Pose& pose, float width, ScreenRect rect) {
     uint32_t scale = Runtime::Get().GetHudWidth() / SCREEN_WIDTH;
     HudQuad quad;
@@ -2237,6 +2349,7 @@ void Game_OnFrame() {
         UpdateLiftGrab();
         UpdateBlockGrip();
         UpdateClimb();
+        UpdateSpinAttack();
         UpdateMasks();
         UpdateBottle();
         UpdateFishing();
@@ -2767,6 +2880,11 @@ extern "C" bool Vr_DropNeedsGrab(s16 type) {
 }
 
 extern "C" void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot) {
+    // During a spin attack the sword goes where the game's spin takes it, around the player, so it sweeps everything
+    // around them; the hands come back to the controllers after.
+    if (player->stateFlags2 & PLAYER_STATE2_SPIN_ATTACKING) {
+        return;
+    }
     switch (limbIndex) {
         case PLAYER_LIMB_L_FOREARM:
             SohVr::PlaceForearm(player, SohVr::LINK_LEFT, PLAYER_LIMB_L_HAND, pos, rot);
@@ -2908,6 +3026,7 @@ extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
     }
     float travel = sqrtf(SohVr::Dot(move, move)) / SohVr::sBuild.unitsPerMeter; // meters this tick
     float speed = travel * SohVr::kTicksPerSecond;                               // meters per second
+    SohVr::sTipSpeed = speed;
     bool turnedBack = SohVr::Dot(move, sLastMove) < 0.0f;
     float handSpeed = SohVr::HandSpeed(SohVr::ControllerFor(SohVr::LINK_LEFT));
     sLastTip = tipFromLink;
@@ -2943,14 +3062,71 @@ extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
     }
 
     bool live = SohVr::sSwingActive && !SohVr::sSwingHit;
-    // During the game's own attacks its damage stays as it set it.
+    // During the game's own attacks its damage stays as it set it. A spin made by turning hits as a spin, and a
+    // very hard swing as hard as a jump attack.
     if (live && player->meleeWeaponState == 0) {
+        u32 damage = SohVr::sPhysicalSpinLeft > 0.0f       ? SohVr::SpinDamageFlags(player)
+                     : speed >= SohVr::kHeavySwingSpeed ? SohVr::HeavyDamageFlags(player)
+                                                        : SohVr::SlashDamageFlags(player);
         for (ColliderQuad& quad : player->meleeWeaponQuads) {
-            quad.info.toucher.dmgFlags = SohVr::SlashDamageFlags(player);
+            quad.info.toucher.dmgFlags = damage;
             quad.info.toucherFlags = TOUCH_ON | TOUCH_NEAREST;
         }
     }
     return live;
+}
+
+extern "C" bool Vr_TakeSpinCharge(Player* player) {
+    bool requested = SohVr::sSpinChargeRequested;
+    SohVr::sSpinChargeRequested = false;
+    return requested && Vr_IsWorldStereo() && player == GET_PLAYER(gPlayState) && SohVr::HoldsSword(player);
+}
+
+extern "C" void Vr_SwordAfterUpdate(PlayState* play, Player* player) {
+    static bool sWasInWall = false;
+    static int sCooldown = 0;
+    if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState) || Player_GetMeleeWeaponHeld(player) == 0) {
+        sWasInWall = false;
+        return;
+    }
+    if (sCooldown > 0) {
+        sCooldown--;
+    }
+    WeaponInfo& blade = player->meleeWeaponInfo[0];
+    Vec3f hit;
+    CollisionPoly* poly = nullptr;
+    s32 bgId = 0;
+    bool inWall = BgCheck_EntityLineTest1(&play->colCtx, &blade.base, &blade.tip, &hit, &poly, true, true, true, true,
+                                          &bgId) &&
+                  !SurfaceType_IsIgnoredByEntities(&play->colCtx, poly, bgId) &&
+                  SurfaceType_GetFloorType(&play->colCtx, poly, bgId) != 6 &&
+                  func_8002F9EC(play, &player->actor, poly, bgId, &hit) == 0;
+    // Only on striking it: a blade resting against a wall is quiet.
+    bool strike = inWall && !sWasInWall && sCooldown == 0 && SohVr::sTipSpeed >= SohVr::kWallStrikeSpeed;
+    sWasInWall = inWall;
+    if (!strike) {
+        return;
+    }
+    sCooldown = 4;
+    SohVr::Hand hand = SohVr::ControllerFor(SohVr::LINK_LEFT);
+    if (player->heldItemAction == PLAYER_IA_HAMMER) {
+        func_80842A28(play, player); // the ground shakes, and switches the hammer works on feel it
+        SohVr::Runtime::Get().Vibrate(hand, 1.0f, 0.25f);
+    } else {
+        if (func_80041F10(&play->colCtx, poly, bgId) == 0xA) {
+            CollisionCheck_SpawnShieldParticlesWood(play, &hit, &player->actor.projectedPos);
+            Player_PlaySfx(&player->actor, NA_SE_IT_WALL_HIT_SOFT);
+        } else {
+            CollisionCheck_SpawnShieldParticles(play, &hit);
+            Player_PlaySfx(&player->actor, NA_SE_IT_WALL_HIT_HARD);
+        }
+        SohVr::Runtime::Get().Vibrate(hand, 0.8f, 0.1f);
+    }
+    func_80842CF0(play, player); // the Deku stick breaks, and Biggoron's Sword wears, as on the game's own hits
+    // The swing ends against the wall.
+    SohVr::sSwingActive = false;
+    SohVr::sSwingCooldown = SohVr::kSwingCooldownTicks;
+    SohVr::sSwingTravel = 0.0f;
 }
 
 extern "C" bool Vr_ItemsFromMenu(void) {
