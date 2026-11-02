@@ -16,7 +16,7 @@ There are other good ways to play these games in VR, and they're well worth a lo
 * **Everything is in your hands, nothing is in a menu.** Every item, sword, shield, tunic and pair of boots is on one item wheel, and so are the pause menu and the VR settings, so you never stop to dig through the inventory screen.
 * **The world reacts to your hands.** Push and pull doors open, lift chest lids, take hold of blocks with both hands, and carry pots and rocks in one hand or two.
 * **You're Link, start to finish.** The title screen plays around you in 3D, cutscenes play out in the world through Link's eyes, and what you find is held up in your own hands.
-* **It teaches you VR, not buttons.** The game's own lessons, from the items you find to the Kokiri Forest signs and Navi's first words, say what to do with your hands.
+* **Game Tutorial Updates** The game's own lessons, from the items you find to the Kokiri Forest signs and Navi's first words, say what to do with your hands.
 * **Seated or standing.** Seated mode lifts your view to a standing Link's eye height.
 
 ## This port tries to reimagine Ocarina of Time, Majora's Mask, and whatever ROM hack you have as a AAA 6DOF VR Game
