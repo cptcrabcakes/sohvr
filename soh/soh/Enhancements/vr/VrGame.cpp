@@ -9,6 +9,9 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/ShipInit.hpp"
 
+#include <fast/resource/type/DisplayList.h>
+#include <libultraship/bridge/resourcebridge.h>
+
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -19,6 +22,7 @@ extern "C" {
 #include "global.h"
 #include "objects/object_link_boy/object_link_boy.h"
 #include "objects/object_link_child/object_link_child.h"
+#include "objects/object_gi_hookshot/object_gi_hookshot.h"
 #include "overlays/actors/ovl_Arms_Hook/z_arms_hook.h"
 // Named in a log line when a hookshot pull doesn't aim (see CheckHookshotPull).
 s32 func_8083501C(Player* thisx, PlayState* play);
@@ -2156,15 +2160,21 @@ struct HandItem {
     Vec3 forward;        // where it points, or shoots
     float unitsPerMeter; // model units per meter, which sets its size in the hand
     Vec3 tip = {};       // where a hookshot's hook leaves from
+    // A hookshot's hook is the part of its model further than hookStart along where it points; while the hook flies,
+    // the model's display list hookList is drawn without it (see Hookless).
+    float hookStart = 0.0f;
+    const char* hookList = nullptr;
 };
 
 // The hookshot and longshot are held by the bar at their back, and the boomerang by one wing with the other one
 // ahead. The bow and slingshot keep Link's own models, whose strings can stretch to the drawing hand; their
 // item-get models have the string drawn in at rest.
-constexpr HandItem kHookshot = { GID_HOOKSHOT, { 23.6f, -20.5f, 0.0f }, { 0.71f, 0.71f, 0.0f },
-                                 { -0.71f, 0.71f, 0.0f }, 212.0f, { -26.9f, 30.0f, 0.0f } };
-constexpr HandItem kLongshot = { GID_LONGSHOT, { 36.3f, -21.8f, 0.0f }, { 0.57f, 0.82f, 0.0f },
-                                 { -0.82f, 0.57f, 0.0f }, 212.0f, { -42.4f, 33.0f, 0.0f } };
+// Their hooks (a collar, barbs and point) start past 14 and 23 units along where they point, where their barrels end
+// at 11 and 20 (measured from the models' triangles).
+constexpr HandItem kHookshot = { GID_HOOKSHOT,  { 23.6f, -20.5f, 0.0f }, { 0.71f, 0.71f, 0.0f },
+                                 { -0.71f, 0.71f, 0.0f }, 212.0f, { -26.9f, 30.0f, 0.0f }, 14.0f, gGiHookshotDL };
+constexpr HandItem kLongshot = { GID_LONGSHOT,  { 36.3f, -21.8f, 0.0f }, { 0.57f, 0.82f, 0.0f },
+                                 { -0.82f, 0.57f, 0.0f }, 212.0f, { -42.4f, 33.0f, 0.0f }, 23.0f, gGiLongshotDL };
 constexpr HandItem kBoomerang = { GID_BOOMERANG, { 27.0f, -8.0f, 0.0f }, { -0.69f, 0.72f, 0.0f },
                                   { -0.72f, -0.69f, 0.0f }, 224.0f };
 
@@ -2245,6 +2255,94 @@ Vec3 HandItemPoint(const MtxF& m, Vec3 point) {
              m.mf[3][2] + p.x * m.mf[0][2] + p.y * m.mf[1][2] + p.z * m.mf[2][2] };
 }
 
+// A hookshot's model without its hook: the same display list with every triangle that reaches past the hook's start
+// taken out, built the first time it's needed. While the hook flies, the game draws it at the end of its chain, so the
+// one on the model would be a second hook left behind (see DrawHandItem).
+std::unordered_map<s16, std::vector<Gfx>> sHooklessModels;
+
+const std::vector<Gfx>* Hookless(const HandItem& item) {
+    auto found = sHooklessModels.find(item.model);
+    if (found != sHooklessModels.end()) {
+        return found->second.empty() ? nullptr : &found->second;
+    }
+    std::vector<Gfx>& out = sHooklessModels[item.model];
+    auto list = std::static_pointer_cast<Fast::DisplayList>(ResourceMgr_GetResourceByNameHandlingMQ(item.hookList));
+    if (list == nullptr) {
+        return nullptr;
+    }
+    // How far along where the item points each loaded vertex is, in model units.
+    Vec3 forward = Normalized(FromItemPlane(item.forward));
+    float along[64] = {};
+    // A triangle, packed as F3DEX2 packs one (each vertex's index times two, in the low 24 bits), reaches the hook.
+    auto onHook = [&](uintptr_t triangle) {
+        for (int shift : { 16, 8, 0 }) {
+            u32 index = ((triangle >> shift) & 0xFF) / 2;
+            if (index < 64 && along[index] > item.hookStart) {
+                return true;
+            }
+        }
+        return false;
+    };
+    const std::vector<Gfx>& source = list->Instructions;
+    for (size_t i = 0; i < source.size(); i++) {
+        Gfx command = source[i];
+        u32 opcode = static_cast<u32>(command.words.w0 >> 24) & 0xFF;
+        // These take two commands' room, the second holding a resource's hash.
+        bool doubled = opcode == G_SETTIMG_OTR_HASH || opcode == G_DL_OTR_HASH || opcode == G_VTX_OTR_HASH ||
+                       opcode == G_BRANCH_Z_OTR || opcode == G_MARKER || opcode == G_MTX_OTR ||
+                       opcode == G_MOVEMEM_OTR;
+        if (opcode == G_VTX_OTR_HASH && i + 1 < source.size()) {
+            // Its offset into the vertices, until the renderer has looked them up and keeps a pointer there.
+            uintptr_t offset = command.words.w1;
+            uint64_t hash = (static_cast<uint64_t>(source[i + 1].words.w0) << 32) + source[i + 1].words.w1;
+            const char* base = offset > 0xFFFFF ? nullptr : static_cast<const char*>(ResourceGetDataByCrc(hash));
+            const Vtx* vertices = offset > 0xFFFFF ? reinterpret_cast<const Vtx*>(offset)
+                                                   : reinterpret_cast<const Vtx*>(base == nullptr ? nullptr : base + offset);
+            u32 count = (command.words.w0 >> 12) & 0xFF;
+            u32 first = ((command.words.w0 >> 1) & 0x7F) - count;
+            for (u32 j = 0; vertices != nullptr && j < count && first + j < 64; j++) {
+                const s16* ob = vertices[j].v.ob;
+                along[first + j] = ob[0] * forward.x + ob[1] * forward.y + ob[2] * forward.z;
+            }
+        } else if (opcode == G_TRI1 && onHook(command.words.w0)) {
+            command.words.w0 = static_cast<uintptr_t>(G_NOOP) << 24;
+            command.words.w1 = 0;
+        } else if (opcode == G_TRI2) {
+            bool firstOnHook = onHook(command.words.w0);
+            bool secondOnHook = onHook(command.words.w1);
+            if (firstOnHook && secondOnHook) {
+                command.words.w0 = static_cast<uintptr_t>(G_NOOP) << 24;
+                command.words.w1 = 0;
+            } else if (firstOnHook || secondOnHook) {
+                // The one that stays, as a single triangle.
+                uintptr_t kept = firstOnHook ? command.words.w1 : command.words.w0;
+                command.words.w0 = (static_cast<uintptr_t>(G_TRI1) << 24) | (kept & 0xFFFFFF);
+                command.words.w1 = 0;
+            }
+        }
+        out.push_back(command);
+        if (doubled && i + 1 < source.size()) {
+            out.push_back(source[++i]);
+        }
+        if (opcode == G_ENDDL) {
+            break;
+        }
+    }
+    return &out;
+}
+
+// A hook this far from the hookshot's tip (game units) is out of it, flying or coming back.
+constexpr float kHookOut = 5.0f;
+
+Actor* FindHook(PlayState* play) {
+    for (Actor* actor = play->actorCtx.actorLists[ACTORCAT_ITEMACTION].head; actor != nullptr; actor = actor->next) {
+        if (actor->id == ACTOR_ARMS_HOOK) {
+            return actor;
+        }
+    }
+    return nullptr;
+}
+
 void DrawHandItem(PlayState* play, Player* player, LinkHand hand) {
     const HandItem* item = HandItemFor(player, hand);
     MtxF m;
@@ -2253,7 +2351,18 @@ void DrawHandItem(PlayState* play, Player* player, LinkHand hand) {
     }
     Matrix_Push();
     Vr_PutWorldMatrix(&m);
-    GetItem_Draw(play, item->model);
+    Actor* hook = item->hookList != nullptr ? FindHook(play) : nullptr;
+    const std::vector<Gfx>* hookless = (hook != nullptr && Vr_HookOut(hook)) ? Hookless(*item) : nullptr;
+    if (hookless != nullptr) {
+        // As GetItem_DrawOpa0 draws the model, without its hook.
+        GraphicsContext* gfxCtx = play->state.gfxCtx;
+        Gfx_SetupDL_25Opa(gfxCtx);
+        Gfx*& opa = gfxCtx->polyOpa.p;
+        gSPMatrix(opa++, MATRIX_NEWMTX(gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+        gSPDisplayList(opa++, const_cast<Gfx*>(hookless->data()));
+    } else {
+        GetItem_Draw(play, item->model);
+    }
     Matrix_Pop();
 }
 
@@ -3811,6 +3920,15 @@ extern "C" bool Vr_HookshotSight(Player* player, Vec3f* tip, Vec3f* direction) {
     *tip = { point.x, point.y, point.z };
     *direction = { forward.x, forward.y, forward.z };
     return true;
+}
+
+extern "C" bool Vr_HookOut(Actor* hook) {
+    Vec3f tip;
+    Vec3f direction;
+    if (!Vr_HookshotSight(GET_PLAYER(gPlayState), &tip, &direction)) {
+        return false;
+    }
+    return Math_Vec3f_DistXYZ(&hook->world.pos, &tip) > SohVr::kHookOut;
 }
 
 extern "C" void Vr_PlaceHookshot(Player* player, Vec3f* chainStart, Actor* hook) {

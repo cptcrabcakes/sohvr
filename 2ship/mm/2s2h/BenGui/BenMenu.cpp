@@ -693,6 +693,15 @@ void BenMenu::AddSettings() {
         .CVar("gSettings.VR.SnapTurn")
         .Options(IntSliderOptions().Min(0).Max(90).DefaultValue(30).Tooltip(
             "How far one flick of the right stick turns you. 0 turns smoothly instead."));
+    AddWidget(path, "Whistle Ocarina Notes", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSettings.VR.MicOcarina")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "With the ocarina out, whistle, hum or sing its notes into your headset's microphone to play them."));
+    AddWidget(path, "Blow for Deku Bubbles", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSettings.VR.DekuBlow")
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "As a Deku Scrub, blow into your headset's microphone to blow a bubble, and stop to shoot it where you "
+            "look. The microphone listens while you're a Deku Scrub."));
     AddWidget(path, "Sword in Right Hand", WIDGET_CVAR_CHECKBOX)
         .CVar("gSettings.VR.SwordInRightHand")
         .Options(CheckboxOptions().Tooltip("Link is left-handed: his sword goes on your left controller and his "

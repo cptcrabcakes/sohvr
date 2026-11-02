@@ -63,7 +63,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips, then push the stick forward while looking at it to push, or while looking away to pull |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift |
 | Fire the bow or slingshot | With your other hand at the bow, pull its trigger, draw back and let go. Pull lower to aim higher, and further for a faster, longer shot. A ring shows where it will land. |
-| Fire the hookshot | Point, pull the trigger to aim, let go to fire. Its laser turns green where it will hook. |
+| Fire the hookshot | Point, pull the trigger to aim, let go to fire. Its laser turns green where it will hook, and the hook itself flies off the end on its chain. |
 | Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
 | Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
 | See through the Lens of Truth | Take it from the wheel and hold it up to your eye: fake walls vanish and hidden things appear wherever you look. Squeeze that hand's grip away from your face to put it away. |

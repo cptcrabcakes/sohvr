@@ -13625,6 +13625,12 @@ s32 Ship_HandleFirstPersonAiming(PlayState* play, Player* this, s32 arg2) {
     float gyroX = 0.0f;
     float gyroY = 0.0f;
 
+    // In VR the head aims, so what's shot from the head, a Deku bubble, goes where the player looks.
+    if (Vr_FirstPersonAim(&this->actor.focus.rot)) {
+        this->unk_AA6_rotFlags |= UNKAA6_ROT_FOCUS_Y;
+        return func_80832754(this, (play->bButtonAmmoPlusOne != 0) || func_800B7128(this) || func_8082EF20(this));
+    }
+
     if (!(CVarGetInteger("gEnhancements.Camera.FirstPerson.MoveInFirstPerson", 0) &&
           CVarGetInteger("gEnhancements.Camera.FirstPerson.RightStickEnabled", 0))) {
         s32 leftStickX = sPlayerControlInput->rel.stick_x; // -60 to 60

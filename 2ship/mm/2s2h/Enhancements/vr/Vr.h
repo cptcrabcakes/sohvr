@@ -55,6 +55,9 @@ void Vr_FistSwing(PlayState* play, Player* player, s32 hand);
 // Whether the shield in Link's hand blocks, wherever it's held.
 bool Vr_HoldsShield(Player* player);
 
+// In first person (aiming the bow, the hookshot or a Deku bubble), the aim as a focus rotation, from where the head
+// looks. False outside VR, where the stick aims.
+bool Vr_FirstPersonAim(Vec3s* rot);
 // Draws what VR adds around the player, such as the item ring. Called from Player_Draw.
 void Vr_DrawPlayerExtras(PlayState* play);
 

@@ -13,9 +13,7 @@
 #include <mutex>
 #include <string>
 
-extern "C" {
-#include "global.h"
-}
+#include <libultraship/libultra/controller.h>
 
 namespace SohVr {
 
@@ -54,6 +52,14 @@ constexpr float kRecoverShare = 0.6f;
 constexpr float kMaxOffNote = 1.5f;
 // The microphone closes this long after listening is turned off (seconds).
 constexpr float kCloseAfter = 3.0f;
+// Blowing into the microphone is loud and has no pitch: at least the blow floor and above the gate, unsure of any
+// pitch, for the blow start time; it ends once that's stopped for the blow end time. A blow that goes on past the
+// longest blow is taken for a new, louder background instead (seconds).
+constexpr float kBlowFloor = 0.03f;
+constexpr float kBlowMaxConfidence = 0.6f;
+constexpr float kBlowStart = 0.08f;
+constexpr float kBlowEnd = 0.12f;
+constexpr float kLongestBlow = 4.0f;
 
 // The ocarina's five notes, D4 F4 A4 B4 D5, as pitch classes (semitones above C). Whatever octave is whistled or sung
 // in, a pitch is matched to its nearest class, and the two Ds by whether it's above the octave the other notes were
@@ -105,6 +111,9 @@ Tracker sTracker;
 std::atomic<uint16_t> sButton{ 0 };
 std::atomic<float> sBend{ 0.0f };
 std::atomic<uint32_t> sOnset{ 0 };
+std::atomic<bool> sBlowing{ false };
+float sBlowFor = 0.0f;  // seconds of blowing heard so far
+float sQuietFor = 0.0f; // seconds since it was last heard
 
 SDL_AudioDeviceID sDevice = 0;
 bool sSdlAudioStarted = false;
@@ -271,11 +280,26 @@ void Analyse() {
     float level = std::sqrt(energy / kLevelWindow);
     float confidence = 0.0f;
     float midi = DetectPitch(x.data(), confidence);
+
+    float gate = std::max(kGateFloor, t.noise * kGateOverNoise);
+    bool blow = level > std::max(gate, kBlowFloor) && confidence < kBlowMaxConfidence;
+    if (blow) {
+        sBlowFor += kHopSeconds;
+        sQuietFor = 0.0f;
+    } else {
+        sQuietFor += kHopSeconds;
+        if (sQuietFor >= kBlowEnd) {
+            sBlowFor = 0.0f;
+        }
+    }
+    bool blowing = sBlowFor >= kBlowStart && sBlowFor < kLongestBlow;
+    sBlowing.store(blowing);
+
     // The background drops at once and rises slowly, and only while no pitch is heard, so it follows the room's
-    // quietest moments and never a held note.
+    // quietest moments and never a held note. Not while the player blows either, which would soon count as the room.
     if (level < t.noise) {
         t.noise = level;
-    } else if (confidence < kMinConfidence) {
+    } else if (confidence < kMinConfidence && !blowing) {
         t.noise += (level - t.noise) * 0.002f;
     }
     UpdateNote(midi, confidence, level);
@@ -315,7 +339,7 @@ std::string PickDevice() {
 void Open() {
     if (!sSdlAudioStarted) {
         if (SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
-            SPDLOG_ERROR("[VR] The ocarina can't listen: SDL audio didn't start ({})", SDL_GetError());
+            SPDLOG_ERROR("[VR] The microphone can't listen: SDL audio didn't start ({})", SDL_GetError());
             return;
         }
         sSdlAudioStarted = true;
@@ -331,11 +355,11 @@ void Open() {
     sTracker = Tracker();
     sDevice = SDL_OpenAudioDevice(device.empty() ? nullptr : device.c_str(), 1, &want, &have, 0);
     if (sDevice == 0) {
-        SPDLOG_ERROR("[VR] The ocarina can't listen: no microphone opened ({})", SDL_GetError());
+        SPDLOG_ERROR("[VR] The microphone can't listen: none opened ({})", SDL_GetError());
         return;
     }
     SDL_PauseAudioDevice(sDevice, 0);
-    SPDLOG_INFO("[VR] The ocarina is listening to {}", device.empty() ? "the default microphone" : device);
+    SPDLOG_INFO("[VR] Listening to {}", device.empty() ? "the default microphone" : device);
 }
 
 void Close() {
@@ -343,7 +367,9 @@ void Close() {
     sDevice = 0;
     sButton.store(0);
     sBend.store(0.0f);
-    SPDLOG_INFO("[VR] The ocarina stopped listening");
+    sBlowing.store(false);
+    sBlowFor = 0.0f;
+    SPDLOG_INFO("[VR] The microphone stopped listening");
 }
 
 bool sOpenFailed = false;
@@ -374,6 +400,7 @@ MicNote OcarinaMic_Current() {
         note.button = sButton.load();
         note.bend = sBend.load();
         note.onset = sOnset.load();
+        note.blowing = sBlowing.load();
     }
     return note;
 }

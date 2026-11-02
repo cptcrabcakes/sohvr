@@ -1,7 +1,9 @@
 #pragma once
 
 // Playing the ocarina by whistling, humming or singing into a microphone: the note heard presses that note's button,
-// and how far off the note it is bends the ocarina's pitch, as the stick does, so the ocarina follows the voice.
+// and how far off the note it is bends the ocarina's pitch, as the stick does, so the ocarina follows the voice. It
+// also hears blowing into the microphone, for blowing a Deku scrub's bubbles. Both games use it; the ocarina's notes
+// and their buttons are the same in each.
 
 #include <cstdint>
 
@@ -13,6 +15,7 @@ struct MicNote {
     float bend = 0.0f;       // semitones above (+) or below (-) the note
     uint32_t onset = 0;      // goes up each time a note starts, including the same note again
     bool listening = false;  // whether a microphone is open
+    bool blowing = false;    // whether the player is blowing into it: loud, with no pitch
 };
 
 // Opens the microphone while on, and closes it a few seconds after it goes off, so it isn't left listening between

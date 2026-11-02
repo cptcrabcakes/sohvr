@@ -335,9 +335,10 @@ void ArmsHook_Draw(Actor* thisx, PlayState* play) {
             Matrix_Scale(0.8, 0.8, 0.8, MTXMODE_APPLY);
         }
         gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-        // In VR the hookshot in hand has a hook of its own on its tip, so this one only shows once it flies.
+        // In VR the hookshot in hand has a hook of its own on its tip, which is taken off it while this one is out
+        // of it (see Vr_HookOut), flying and coming back.
         if (GameInteractor_Should(VB_DRAW_HOOKSHOT_TIP, true, player, play) &&
-            !(Vr_IsWorldStereo() && ((ArmsHook_Shoot != this->actionFunc) || (this->timer <= 0)))) {
+            !(Vr_IsWorldStereo() && !Vr_HookOut(&this->actor))) {
             gSPDisplayList(POLY_OPA_DISP++, gLinkAdultHookshotTipDL);
         }
         Matrix_Translate(this->actor.world.pos.x, this->actor.world.pos.y, this->actor.world.pos.z, MTXMODE_NEW);

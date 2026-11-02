@@ -82,6 +82,9 @@ s32 Vr_ShieldOut(Player* player);
 // How many times further than usual things stay drawn: the VR Draw Distance setting while the world is shown in VR,
 // otherwise 1.
 s32 Vr_DrawDistance(void);
+// Whether the hookshot's hook is out of it, flying or coming back, so it's drawn at the end of its chain and not on
+// the hookshot in the hand. False outside VR.
+bool Vr_HookOut(Actor* hook);
 // Called with every matrix the game writes, so those drawn for Link's hands can follow the controllers every frame.
 void Vr_OnMtxWritten(Mtx* mtx);
 // Blacks out the view while Link falls through the ground into a grotto, as the game's fades are drawn. Called with

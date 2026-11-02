@@ -82,7 +82,7 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down. Carried in both hands, swing both and let go of both together to throw it with both. |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
 | Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go. The shot flies from your drawing hand through the bow or the slingshot's arms, so pull lower to aim higher, and the further you draw, the faster and further it flies. While it's drawn, a ring shows where it will land (Bow Landing Marker), on top of everything and on the enemy it will hit, and dots can show its path (Bow Flight Path). |
-| Fire the hookshot | Point, pull the trigger to aim, let go to fire. A laser shows where it would catch: green where it will hook, red where it would bounce off. |
+| Fire the hookshot | Point, pull the trigger to aim, let go to fire. A laser shows where it would catch: green where it will hook, red where it would bounce off. The hook leaves the hookshot and flies on its chain, and goes back on when it returns. |
 | Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
 | Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
 | See through the Lens of Truth | Take it from the wheel and hold it up to your eye: everything you see is through it, so fake walls vanish and hidden things appear wherever you look. It's on, spending magic, only while it's there. Squeeze that hand's grip away from your face to put it away. |
@@ -120,7 +120,15 @@ The HUD is on your wrists: the three-day clock is a watch on your left wrist, wi
 | Left grip | Shield, or another form's guard (R) |
 | Menu button | Pause |
 
-With the ocarina out, A, X, Y and the right stick (up, down, left, right) play its notes. In the pause menu, title screen and file select the controllers work like a gamepad: X and Y are C-left and C-right, the right stick up and down are C-up and C-down, the left trigger is Z and the right trigger is R.
+Each form has its own moves too:
+
+| Form | Do this |
+| - | - |
+| Deku Scrub | Blow into your headset's microphone to blow a bubble, and stop blowing to shoot it where you're looking. Spin around for real to do the Deku spin. |
+| Deku Scrub, Goron, Zora | Cross your arms over your chest to guard. As a Zora with magic, that raises the electric barrier. |
+| Goron, Zora | Punch with your fists. |
+
+A Deku bubble goes where you look. With the ocarina out, whistle, hum or sing its notes, or play them with A, X, Y and the right stick (up, down, left, right). **Whistle Ocarina Notes** and **Blow for Deku Bubbles** under Settings > VR turn the microphone uses off; it only listens while the ocarina is out or you're a Deku Scrub. In the pause menu, title screen and file select the controllers work like a gamepad: X and Y are C-left and C-right, the right stick up and down are C-up and C-down, the left trigger is Z and the right trigger is R.
 
 To build it, check out the submodules (`git submodule update --init 2ship/libultraship 2ship/ZAPDTR 2ship/OTRExporter`), then follow `2ship/docs/BUILDING.md` from the `2ship` folder. Put your Majora's Mask ROM (the US N64 one) in `2ship/OTRExporter/` and build the `ExtractAssets` target to make `mm.o2r`, then copy `2ship.o2r` from `2ship/build/x64/mm/` next to `2ship.exe`. Turn VR on under Settings > VR.
 

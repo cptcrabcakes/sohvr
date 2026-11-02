@@ -1,6 +1,7 @@
 #include "VrGame.h"
 #include "VrCvars.h"
 #include "VrItems.h"
+#include "VrOcarinaMic.h"
 #include "VrRuntime.h"
 
 #include "2s2h/GameInteractor/GameInteractor.h"
@@ -26,6 +27,10 @@ extern PlayState* gPlayState;
 #define CVAR_VR_SEATED CVAR_SETTING("VR.Seated")
 // Link holds his sword in his left hand and his shield in his right; this puts the sword on the right controller.
 #define CVAR_VR_SWORD_IN_RIGHT_HAND CVAR_SETTING("VR.SwordInRightHand")
+// Whistling, humming or singing plays the ocarina's notes.
+#define CVAR_VR_MIC_OCARINA CVAR_SETTING("VR.MicOcarina")
+// Blowing into the microphone blows a Deku scrub's bubble.
+#define CVAR_VR_DEKU_BLOW CVAR_SETTING("VR.DekuBlow")
 // Fine turns (degrees) of each hand model on its controller, about the grip's X, Y and Z.
 #define CVAR_VR_HAND_TUNE(hand, axis) CVAR_SETTING("VR.Hand" hand ".Tune" axis)
 
@@ -242,6 +247,24 @@ bool sTurnLatched = false;
 bool sRecenterLatched = false;
 // A trigger that chose from the item ring doesn't also use the item until it's let go.
 bool sTriggerBlocked[HAND_COUNT] = {};
+
+// The note the microphone heard last tick, and its onset (see Vr_OverridePads).
+uint32_t sMicOnset = 0;
+u16 sMicButton = 0;
+
+// What each form's gestures hold down this frame (see UpdateFormGestures).
+u16 sFormButtons = 0;
+float sCrossedFor = 0.0f; // seconds the arms have been crossed
+// A spin by turning around: how far the head has turned one way (degrees), and how long that took (seconds).
+float sLastHeadYaw = 0.0f;
+bool sHasLastHeadYaw = false;
+float sSpinTurned = 0.0f;
+float sSpinTurnTime = 0.0f;
+// Turning this far one way within this long is a spin. Slower than half a degree a frame counts as stopping.
+constexpr float kPhysicalSpinDegrees = 300.0f;
+constexpr float kPhysicalSpinSeconds = 1.2f;
+// Crossed arms count once they've been held this long (seconds), so a punch passing across doesn't.
+constexpr float kCrossedHold = 0.15f;
 
 Gfx sOverlayCallSaved;
 Gfx* sOverlayCutAt = nullptr;
@@ -631,6 +654,99 @@ bool GameSpinning(Player* player) {
            player->meleeWeaponAnimation >= PLAYER_MWA_SPIN_ATTACK_1H;
 }
 
+// Whether the arms are crossed over the chest: each hand on the other side of the head's middle, below the head
+// and in front of the body. The guard gesture for the Deku scrub, Goron and Zora.
+bool ArmsCrossed() {
+    const Runtime& runtime = Runtime::Get();
+    const Pose& head = runtime.GetHead();
+    const Pose& left = runtime.GetController(HAND_LEFT).gripPose;
+    const Pose& right = runtime.GetController(HAND_RIGHT).gripPose;
+    if (!head.valid || !left.valid || !right.valid) {
+        return false;
+    }
+    Vec3 forward = HeadForward();
+    float flat = sqrtf(forward.x * forward.x + forward.z * forward.z);
+    if (flat < 0.001f) {
+        return false;
+    }
+    float fx = forward.x / flat;
+    float fz = forward.z / flat;
+    // To the right of where the head looks, flat on the floor: -z is ahead and +x is right in the play space.
+    float rx = -fz;
+    float rz = fx;
+    auto placed = [&](const Pose& hand, float& side, float& drop, float& ahead) {
+        float dx = hand.position[0] - head.position[0];
+        float dz = hand.position[2] - head.position[2];
+        side = dx * rx + dz * rz;
+        ahead = dx * fx + dz * fz;
+        drop = head.position[1] - hand.position[1];
+    };
+    float leftSide, leftDrop, leftAhead, rightSide, rightDrop, rightAhead;
+    placed(left, leftSide, leftDrop, leftAhead);
+    placed(right, rightSide, rightDrop, rightAhead);
+    auto onChest = [](float drop, float ahead) { return drop > 0.1f && drop < 0.6f && ahead > -0.1f && ahead < 0.4f; };
+    return leftSide > 0.03f && rightSide < -0.03f && onChest(leftDrop, leftAhead) && onChest(rightDrop, rightAhead);
+}
+
+// Each form's own gestures, as buttons: crossed arms guard as the Deku scrub, Goron and Zora (R), raising the Zora's
+// electric barrier on land (R and B; in water R alone does); blowing into the microphone blows a Deku scrub's bubble
+// (B held, and let go to shoot it, aimed by the head); and turning around for real does the Deku scrub's spin (A).
+void UpdateFormGestures() {
+    sFormButtons = 0;
+    Runtime& runtime = Runtime::Get();
+    float dt = runtime.GetRefreshRate() > 0 ? 1.0f / runtime.GetRefreshRate() : 0.0f;
+    if (!Vr_IsWorldStereo() || Items_MenuOpen()) {
+        sCrossedFor = 0.0f;
+        sHasLastHeadYaw = false;
+        return;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    u8 form = player->transformation;
+    bool swimming = (player->stateFlags1 & PLAYER_STATE1_8000000) != 0;
+
+    bool guardingForm = form == PLAYER_FORM_DEKU || form == PLAYER_FORM_GORON || form == PLAYER_FORM_ZORA;
+    sCrossedFor = (guardingForm && ArmsCrossed()) ? sCrossedFor + dt : 0.0f;
+    if (sCrossedFor >= kCrossedHold) {
+        sFormButtons |= BTN_R;
+        if (form == PLAYER_FORM_ZORA && !swimming) {
+            sFormButtons |= BTN_B;
+        }
+    }
+
+    if (form == PLAYER_FORM_DEKU && CVarGetInteger(CVAR_VR_DEKU_BLOW, 1) && !Game_PlayingOcarina() &&
+        OcarinaMic_Current().blowing) {
+        sFormButtons |= BTN_B;
+    }
+
+    // A spin by turning: how far the head has turned one way, and how long it took.
+    Vec3 forward = RotateYaw(sYaw, HeadForward());
+    float yaw = atan2f(forward.x, forward.z) * (180.0f / M_PIf);
+    if (sHasLastHeadYaw) {
+        float turned = remainderf(yaw - sLastHeadYaw, 360.0f);
+        if (turned * sSpinTurned < 0.0f || fabsf(turned) < 0.5f) {
+            sSpinTurned = 0.0f; // stopped, or turned back
+            sSpinTurnTime = 0.0f;
+        }
+        sSpinTurned += turned;
+        sSpinTurnTime += dt;
+        if (sSpinTurnTime > kPhysicalSpinSeconds) {
+            sSpinTurned = 0.0f;
+            sSpinTurnTime = 0.0f;
+        }
+    }
+    sLastHeadYaw = yaw;
+    sHasLastHeadYaw = true;
+    if (fabsf(sSpinTurned) >= kPhysicalSpinDegrees && form == PLAYER_FORM_DEKU && !swimming &&
+        (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND)) {
+        sSpinTurned = 0.0f;
+        sSpinTurnTime = 0.0f;
+        sLatchedButtons |= BTN_A;
+        runtime.Vibrate(HAND_LEFT, 0.5f, 0.1f);
+        runtime.Vibrate(HAND_RIGHT, 0.5f, 0.1f);
+        SPDLOG_INFO("[VR] Deku spin by turning around");
+    }
+}
+
 void RegisterVr() {
     // Nothing to register yet: the decomp calls in directly (see Vr.h).
 }
@@ -691,6 +807,12 @@ void Game_OnFrame() {
     } else {
         Items_Close();
     }
+    UpdateFormGestures();
+
+    // The microphone listens while the ocarina is out, and while Link is a Deku scrub, who blows bubbles.
+    bool deku = Vr_IsWorldStereo() && GET_PLAYER(gPlayState)->transformation == PLAYER_FORM_DEKU &&
+                CVarGetInteger(CVAR_VR_DEKU_BLOW, 1);
+    OcarinaMic_Listen((Game_PlayingOcarina() && CVarGetInteger(CVAR_VR_MIC_OCARINA, 1)) || deku);
 
     // The panel ahead, for the whole HUD while text or a timer is up, stays put while the player looks around, and
     // comes around in front of them when they've turned well away from it.
@@ -1122,6 +1244,7 @@ u16 WorldButtons() {
     }
     // Not while the left hand is at the face, where its grip is for masks.
     buttons |= (left.gripHeld && !menuOpen && !Items_HandAtFace(HAND_LEFT)) ? BTN_R : 0;
+    buttons |= sFormButtons;
     buttons |= left.menu ? BTN_START : 0;
     return buttons;
 }
@@ -1169,4 +1292,31 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
     }
     pads[0].button |= buttons | sLatchedButtons;
     sLatchedButtons = 0;
+
+    // A whistled, hummed or sung note presses its button, and how far off it is bends the ocarina as the stick's up
+    // and down do, two semitones at most each way. The game only plays a note on a new press, so the same note
+    // started again is let go for a tick first.
+    if (Game_PlayingOcarina() && CVarGetInteger(CVAR_VR_MIC_OCARINA, 1)) {
+        MicNote heard = OcarinaMic_Current();
+        bool again = heard.onset != sMicOnset && heard.button == sMicButton;
+        sMicOnset = heard.onset;
+        if (heard.button != 0 && !again) {
+            pads[0].button |= heard.button;
+            pads[0].stick_y = static_cast<int8_t>(std::clamp(lroundf(heard.bend * 32.0f), -64L, 64L));
+        }
+        sMicButton = again ? 0 : heard.button;
+    }
+}
+
+extern "C" bool Vr_FirstPersonAim(Vec3s* rot) {
+    using namespace SohVr;
+    if (!Vr_IsWorldStereo() || !Runtime::Get().GetHead().valid) {
+        return false;
+    }
+    Vec3 forward = RotateYaw(sYaw, HeadForward());
+    float flat = sqrtf(forward.x * forward.x + forward.z * forward.z);
+    rot->y = RAD_TO_BINANG(atan2f(forward.x, forward.z));
+    // Pitch is positive downward, as the game's projectiles take it.
+    rot->x = std::clamp<s16>(RAD_TO_BINANG(atan2f(-forward.y, flat)), -0x36B0, 0x36B0);
+    return true;
 }
