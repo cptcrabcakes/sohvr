@@ -32,6 +32,7 @@
 #include "2s2h/ObjectExtension/ActorListIndex.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 #include "2s2h/BenGui/CosmeticEditor.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 
 // bss
 // FaultClient sActorFaultClient; // 2 funcs
@@ -3074,6 +3075,18 @@ void Actor_DrawLensActors(PlayState* play, s32 numLensActors, Actor** lensActors
     s32 dbgVar1;
     s32 dbgVar2;
     s32 pad[2];
+
+    // In VR the lens's view is the whole view instead of a circle in the middle of the screen, which can't sit
+    // anywhere sensible in a headset: while it's up, what it shows is there and what it hides is gone, wherever the
+    // player looks.
+    if (Vr_IsWorldStereo()) {
+        if (play->roomCtx.curRoom.lensMode == LENS_MODE_SHOW_ACTORS) {
+            for (i = 0; i < numLensActors; i++) {
+                Actor_Draw(play, lensActors[i]);
+            }
+        }
+        return;
+    }
 
     // Remnant of debug
     dbgVar1 = true;

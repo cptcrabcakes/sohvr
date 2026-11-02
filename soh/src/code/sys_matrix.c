@@ -564,12 +564,14 @@ void Matrix_SetTranslateRotateYXZ(f32 translateX, f32 translateY, f32 translateZ
 Mtx* Matrix_MtxFToMtx(MtxF* src, Mtx* dest) {
     FrameInterpolation_RecordMatrixMtxFToMtx(src, dest);
     guMtxF2L(src, dest);
+    Vr_OnMtxWritten(dest);
     return dest;
 }
 
 Mtx* Matrix_ToMtx(Mtx* dest, char* file, s32 line) {
     FrameInterpolation_RecordMatrixToMtx(dest, file, line);
     guMtxF2L(Matrix_CheckFloats(sCurrentMatrix, file, line), dest);
+    Vr_OnMtxWritten(dest);
     return dest;
     // return Matrix_MtxFToMtx(MATRIX_CHECKFLOATS(sCurrentMatrix), dest);
 }

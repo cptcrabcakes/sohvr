@@ -57,6 +57,12 @@ static const std::map<int32_t, const char*> vrMovementMap = {
     { 1, "Where your left hand points" },
 };
 
+static const std::map<int32_t, const char*> vrTitleViewMap = {
+    { 0, "From Its Camera" },
+    { 1, "Through Link's Eyes" },
+    { 2, "On the Floating Screen" },
+};
+
 static const std::map<int32_t, const char*> vrSwordHandMap = {
     { 0, "Left (like Link)" },
     { 1, "Right (hands swapped)" },
@@ -635,6 +641,21 @@ void SohMenu::AddMenuSettings() {
                      .DefaultIndex(0)
                      .Tooltip("Link is left-handed. Swapping puts his sword hand on the right controller, at the "
                               "cost of each hand model showing on the opposite side."));
+    AddWidget(path, "Title Screen", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_SETTING("VR.TitleView"))
+        .RaceDisable(false)
+        .Options(ComboboxOptions()
+                     .ComboMap(vrTitleViewMap)
+                     .DefaultIndex(0)
+                     .Tooltip("How the title screen's cutscene is watched: following its camera around the world, "
+                              "through the eyes of the Link riding in it, or flat on the floating screen, which is "
+                              "the calmest."));
+    AddWidget(path, "Draw Distance: %dx", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.DrawDistance"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(1).Max(5).DefaultValue(3).Format("%dx").Tooltip(
+            "How much further than usual people, enemies and things stay drawn in VR, so they don't pop in as "
+            "you look around. Higher costs more performance."));
 
     // Temporary, for lining the hand models up exactly.
     AddWidget(path, "Hand Fine Tuning", WIDGET_SEPARATOR_TEXT);

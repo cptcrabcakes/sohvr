@@ -1396,6 +1396,7 @@ void Play_Draw(PlayState* play) {
             gSPDisplayList(OVERLAY_DISP++, gfxP);
             Vr_OnFadeDrawn(OVERLAY_DISP);
             gSPGrayscale(gfxP++, false);
+            Vr_DrawBlackout(&gfxP);
 
             if ((play->transitionMode == TRANS_MODE_INSTANCE_RUNNING) ||
                 (play->transitionMode == TRANS_MODE_INSTANCE_WAIT) ||

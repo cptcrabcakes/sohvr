@@ -5,6 +5,7 @@
 #include "overlays/actors/ovl_En_Elf/z_en_elf.h"
 #include "overlays/actors/ovl_En_Elforg/z_en_elforg.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 
 #include "2s2h/Enhancements/FrameInterpolation/FrameInterpolation.h"
 
@@ -468,7 +469,8 @@ void func_800A6A40(EnItem00* this, PlayState* play) {
         }
     }
 
-    if (this->unk152 == 0) {
+    // In VR the player's eyes are Link's, so a collected drop vanishes instead of bouncing in front of them.
+    if ((this->unk152 == 0) || ((this->getItemId == GI_NONE) && Vr_IsWorldStereo())) {
         Actor_Kill(&this->actor);
         return;
     }

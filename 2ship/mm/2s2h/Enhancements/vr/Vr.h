@@ -43,6 +43,10 @@ bool Vr_LimbMirrored(Player* player, s32 limbIndex);
 void Vr_PutWorldMatrix(MtxF* matrix);
 // Whether Link holds a blade (any sword, or a Deku stick) whose hitbox follows the hand.
 bool Vr_HoldsBlade(Player* player);
+// In VR, the blade in Link's hand as hit points in the hand model's space, sized to the blade as it's drawn instead of
+// the game's longer, wider reach: its three tips and three bases, either of which may be NULL. gameLength is the
+// game's own length for it, which a Deku stick keeps. False outside VR, or without a blade.
+bool Vr_BladePoints(Player* player, f32 gameLength, Vec3f* tips, Vec3f* bases);
 // Whether the blade, whose tip is at tip this tick, is swung by hand fast enough to hit. Sets its damage if so.
 bool Vr_SwordSwing(Player* player, Vec3f* tip);
 // A Goron's or Zora's punch thrown by hand: places that fist's hitbox (hand 0 is the left) while it's moving fast.

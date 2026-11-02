@@ -6,6 +6,7 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#include "soh/Enhancements/vr/Vr.h"
 
 #define ANIM_INTERP 1
 
@@ -81,7 +82,8 @@ void SkelAnime_DrawLod(PlayState* play, void** skeleton, Vec3s* jointTable, Over
     Vec3f pos;
     Vec3s rot;
 
-    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0)) {
+    // In VR the detailed models are always used: switching models with distance showed as things popping.
+    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0) || Vr_IsWorldStereo()) {
         lod = 0;
     }
 
@@ -199,7 +201,8 @@ void SkelAnime_DrawFlexLod(PlayState* play, void** skeleton, Vec3s* jointTable, 
     Vec3s rot;
     Mtx* mtx = Graph_Alloc(play->state.gfxCtx, dListCount * sizeof(Mtx));
 
-    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0)) {
+    // In VR the detailed models are always used: switching models with distance showed as things popping.
+    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0) || Vr_IsWorldStereo()) {
         lod = 0;
     }
 

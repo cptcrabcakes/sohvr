@@ -615,6 +615,17 @@ void Player_SetModels(Player* this, s32 modelGroup) {
             this->rightHandDLists = &sPlayerDListGroups[this->rightHandType][1];
         }
     }
+    // In VR the shield is drawn and put away on its own, apart from the sword (see Vr_ShieldOut).
+    s32 vrShieldOut = Vr_ShieldOut(this);
+    if ((vrShieldOut == 0) && (this->rightHandType == PLAYER_MODELTYPE_RH_SHIELD)) {
+        this->rightHandType = PLAYER_MODELTYPE_RH_CLOSED;
+        this->rightHandDLists = &sPlayerDListGroups[this->rightHandType][gSaveContext.linkAge];
+    } else if ((vrShieldOut == 1) && ((this->rightHandType == PLAYER_MODELTYPE_RH_OPEN) ||
+                                      (this->rightHandType == PLAYER_MODELTYPE_RH_CLOSED))) {
+        this->rightHandType = PLAYER_MODELTYPE_RH_SHIELD;
+        this->rightHandDLists = &sPlayerDListGroups[this->rightHandType][gSaveContext.linkAge];
+    }
+
     if ((CVarGetInteger(CVAR_ENHANCEMENT("BowSlingshotAmmoFix"), 0) ||
          CVarGetInteger(CVAR_ENHANCEMENT("EquipmentAlwaysVisible"), 0)) &&
         this->rightHandType == 11) { // If holding Bow/Slingshot
@@ -653,6 +664,10 @@ void Player_SetModels(Player* this, s32 modelGroup) {
 
     Player_SetModelsForHoldingShield(this);
     GameInteractor_ExecuteOnPlayerSetModels(this, modelGroup);
+}
+
+void Player_RefreshModelsVr(Player* this) {
+    Player_SetModels(this, this->modelGroup);
 }
 
 void Player_SetModelGroup(Player* this, s32 modelGroup) {
@@ -1572,12 +1587,18 @@ Vec3f D_801260A4[3] = {
 
 void func_800906D4(PlayState* play, Player* this, Vec3f* newTipPos) {
     Vec3f newBasePos[3];
+    Vec3f vrBases[3];
+    Vec3f* bases = D_801260A4;
     // In VR the blade is also live whenever it's swung fast enough by hand.
     s32 vrSwing = Vr_SwordSwing(this, &newTipPos[1]);
 
-    Matrix_MultVec3f(&D_801260A4[0], &newBasePos[0]);
-    Matrix_MultVec3f(&D_801260A4[1], &newBasePos[1]);
-    Matrix_MultVec3f(&D_801260A4[2], &newBasePos[2]);
+    // And its hitbox is the blade as it's drawn (see Vr_BladePoints).
+    if (Vr_BladePoints(this, D_80126080.x, NULL, vrBases)) {
+        bases = vrBases;
+    }
+    Matrix_MultVec3f(&bases[0], &newBasePos[0]);
+    Matrix_MultVec3f(&bases[1], &newBasePos[1]);
+    Matrix_MultVec3f(&bases[2], &newBasePos[2]);
 
     if (func_80090480(play, NULL, &this->meleeWeaponInfo[0], &newTipPos[0], &newBasePos[0]) &&
         !(this->stateFlags1 & PLAYER_STATE1_SHIELDING) &&
@@ -1701,6 +1722,16 @@ void Player_DrawGetItem(PlayState* play, Player* this) {
 }
 
 void func_80090A28(Player* this, Vec3f* vecs) {
+    Vec3f vrTips[3];
+
+    // In VR the hitbox is the blade as it's drawn (see Vr_BladePoints).
+    if (Vr_BladePoints(this, D_80126080.x, vrTips, NULL)) {
+        Matrix_MultVec3f(&vrTips[0], &vecs[0]);
+        Matrix_MultVec3f(&vrTips[1], &vecs[1]);
+        Matrix_MultVec3f(&vrTips[2], &vecs[2]);
+        return;
+    }
+
     D_8012608C.x = D_80126080.x;
 
     if (this->unk_845 >= 3) {

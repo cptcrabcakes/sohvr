@@ -57,6 +57,11 @@ extern PlayState* gPlayState;
 #define CVAR_VR_SWIM_STROKES CVAR_SETTING("VR.SwimStrokes")
 // 0 keeps Link's hands on their own sides, so the sword is in the left hand like his; 1 swaps them.
 #define CVAR_VR_SWORD_IN_RIGHT_HAND CVAR_SETTING("VR.SwordInRightHand")
+// How the title screen's cutscene is watched: 0 from its own camera, 1 through Link's eyes, 2 on the floating
+// screen.
+#define CVAR_VR_TITLE_VIEW CVAR_SETTING("VR.TitleView")
+// How many times further than usual actors stay drawn in VR (1 to 5).
+#define CVAR_VR_DRAW_DISTANCE CVAR_SETTING("VR.DrawDistance")
 // Extra rotation in degrees for each of Link's hand models, about the grip's X, Y and Z axes, for fine tuning.
 #define CVAR_VR_HAND_TUNE(hand, axis) CVAR_SETTING("VR.Hand" hand ".Tune" axis)
 
@@ -294,6 +299,7 @@ struct TickState {
     // On the title screen the view follows the game's camera instead of Link (see FollowCamera), and the play
     // space's turn changes each tick, so the frames between ticks ease it.
     bool fromCamera = false;
+    bool title = false; // the title screen's cutscene, whose logo goes on a big panel ahead
     float yaw = 0.0f;
     bool message = false;
     s16 textboxY = 0;
@@ -308,6 +314,12 @@ struct TickState {
     Mtx* skybox[kMaxSkyboxes] = {};
     MtxF skyboxMatrix[kMaxSkyboxes] = {};
     int skyboxCount = 0;
+    // Each of Link's hands this tick (by LinkHand): the matrices drawn for it, where its controller's grip was in the
+    // world when it was posed, and which controller that was (see Game_AddEyeMatrices).
+    std::vector<Mtx*> handMtx[2];
+    MtxF handGrip[2] = {};
+    bool handPlaced[2] = {};
+    Hand handController[2] = { HAND_LEFT, HAND_RIGHT };
     // How far the play space's center moved this tick to follow the player's steps (x, z meters). Link moved the
     // same way, so frames between ticks slide the center along with him and the view doesn't jump back.
     float centerShift[2] = {};
@@ -331,6 +343,16 @@ bool sSeatMeasured = false;
 PlayState* sLastPlay = nullptr;
 s16 sLastScene = -1;
 float sHeadDrop = 0.0f; // how far the play space is lowered to follow Link's head (see kHeadFollowEase), in game units
+// Dropping into a grotto, Link falls through the ground before the scene changes, and arrives falling in from above the
+// grotto's ceiling, so the eyes went through both and saw the world from underneath. They're blacked out (see
+// Vr_DrawBlackout) from when the floor gives way until he's standing again, or after kFallBlackoutTicks at most,
+// easing in over kBlackoutInTicks and out over kBlackoutOutTicks.
+bool sFallingThrough = false;
+int sFallTicks = 0;
+float sBlackout = 0.0f; // 0 to 1
+constexpr int kFallBlackoutTicks = 80;
+constexpr float kBlackoutInTicks = 3.0f;
+constexpr float kBlackoutOutTicks = 6.0f;
 s16 sLoggedEyeScene = -1;
 
 u16 sLatchedButtons = 0;
@@ -449,8 +471,8 @@ bool InGameplay(PlayState* play) {
 // the floating screen. So is the title screen's cutscene, from its own camera (see FollowCamera). File select, the
 // pause menu and the credits stay on the screen.
 bool ShowsWorld(PlayState* play) {
-    return play != nullptr && GET_PLAYER(play) != nullptr &&
-           (gSaveContext.gameMode == GAMEMODE_NORMAL || gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN) &&
+    bool title = gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN && CVarGetInteger(CVAR_VR_TITLE_VIEW, 0) != 2;
+    return play != nullptr && GET_PLAYER(play) != nullptr && (gSaveContext.gameMode == GAMEMODE_NORMAL || title) &&
            play->pauseCtx.state == 0 && !UsesFixedCamera(play);
 }
 
@@ -496,6 +518,22 @@ bool HandOverShoulder(const Pose& hand) {
     float ahead = (offset.x * forward.x + offset.z * forward.z) / flat;
     return ahead < -kShoulderBehind && offset.y > -kShoulderDrop &&
            offset.x * offset.x + offset.z * offset.z < kShoulderReach * kShoulderReach;
+}
+
+// Whether a hand is over the right shoulder, as opposed to the left, by which side of the head it's on.
+bool OverRightShoulder(const Pose& hand) {
+    const Pose& head = Runtime::Get().GetHead();
+    Vec3 right = Rotate(head.orientation, { 1.0f, 0.0f, 0.0f });
+    return (hand.position[0] - head.position[0]) * right.x + (hand.position[2] - head.position[2]) * right.z > 0.0f;
+}
+
+// The shield is drawn and put away on its own, from over the shoulder away from the sword's (see Game_OnFrame), so
+// either can be held without the other. Its hand shows it only while it's out (see Vr_ShieldOut).
+bool sShieldOut = false;
+bool sRefreshHandModels = false;
+
+bool HasShield() {
+    return CUR_EQUIP_VALUE(EQUIP_TYPE_SHIELD) != EQUIP_VALUE_SHIELD_NONE;
 }
 
 bool SwordDrawn(Player* player) {
@@ -631,11 +669,13 @@ bool IsSpell(u8 item) {
 
 // The Lens of Truth taken from the wheel is held in that hand, and the world is seen through it while it's held up
 // to the face: the game's lens turns on there, spending magic as it does, and off when the hand comes away. It's
-// tried again no sooner than the retry time (seconds), so running out of magic doesn't buzz every frame.
+// tried again no sooner than the retry time (seconds), so running out of magic doesn't buzz every frame. Squeezing
+// that hand's grip away from the face puts it away.
 constexpr float kLensRetryTime = 1.0f;
 bool sHoldingLens = false;
 Hand sLensHand = HAND_RIGHT;
 float sLensRetry = 0.0f;
+bool sLensGripLatched = false;
 
 // The note the microphone heard last tick, and its onset (see Vr_OverridePads).
 uint16_t sMicButton = 0;
@@ -816,7 +856,7 @@ u16 CurrentButtons() {
         } else if (fabsf(right.stick[1]) > 0.7f && fabsf(right.stick[1]) > fabsf(right.stick[0])) {
             buttons |= right.stick[1] > 0.0f ? BTN_CUP : BTN_L;
         }
-        buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
+        buttons |= left.menu ? BTN_START : 0;
         return buttons;
     }
     // In the world the sword, shield and items are physical, so R and the C buttons aren't on any button. B is
@@ -853,8 +893,9 @@ u16 CurrentButtons() {
                right.stick[1] < 0.0f) {
         buttons |= BTN_L;
     }
-    // SteamVR on a Quest keeps the menu button for its own dashboard, so the stick click pauses too.
-    buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
+    // The menu button pauses, as does the System ring. Not the stick click, which got pressed by accident while
+    // walking.
+    buttons |= left.menu ? BTN_START : 0;
     return buttons;
 }
 
@@ -1788,6 +1829,8 @@ Pose PanelInFront(float distance, float drop);
 constexpr float kTitlePanelDistance = 2.5f; // meters
 constexpr float kTitlePanelWidth = 2.4f;
 bool sFollowingCamera = false;
+constexpr float kTitleGroundClearance = 0.5f; // meters
+constexpr float kTitleGroundProbe = 60.0f;    // units above the eyes the ground is looked for from
 float sCameraHeadYaw = 0.0f;
 Pose sTitlePanel;
 
@@ -1800,7 +1843,6 @@ void FollowCamera(PlayState* play, float heightMeters) {
     if (!sFollowingCamera) {
         Vec3 forward = HeadForward();
         sCameraHeadYaw = atan2f(-forward.x, -forward.z);
-        sTitlePanel = PanelInFront(kTitlePanelDistance, 0.0f);
         sFollowingCamera = true;
     }
     float lookX = camera->at.x - camera->eye.x;
@@ -1813,6 +1855,17 @@ void FollowCamera(PlayState* play, float heightMeters) {
     sBuild.centerShift[0] = sBuild.centerShift[1] = 0.0f;
     float eyeHeight = std::max(heightMeters, 1.0f) * kEyeHeightRatio * sBuild.unitsPerMeter;
     sBuild.anchor = { camera->eye.x, camera->eye.y - eyeHeight, camera->eye.z };
+
+    // The player's eyes stay at least kTitleGroundClearance above the ground under them: as the camera skims low
+    // over the field, a head moved down or aside from its spot went into the hillsides.
+    Vec3 eye = ToWorld(head.position, sBuild.anchor, sBuild.unitsPerMeter);
+    CollisionPoly* poly = nullptr;
+    Vec3f probe = { eye.x, eye.y + kTitleGroundProbe, eye.z };
+    f32 ground = BgCheck_EntityRaycastFloor1(&play->colCtx, &poly, &probe);
+    float lowest = ground + kTitleGroundClearance * sBuild.unitsPerMeter;
+    if (ground > BGCHECK_Y_MIN && eye.y < lowest) {
+        sBuild.anchor.y += lowest - eye.y;
+    }
 }
 
 // Runs as the game starts drawing a tick, before the play view's matrices are built.
@@ -1827,7 +1880,13 @@ void CaptureTick() {
     }
 
     Player* player = GET_PLAYER(gPlayState);
-    sBuild.fromCamera = gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN;
+    sBuild.title = gSaveContext.gameMode == GAMEMODE_TITLE_SCREEN;
+    sBuild.fromCamera = sBuild.title && CVarGetInteger(CVAR_VR_TITLE_VIEW, 0) == 0;
+    if (!sBuild.title) {
+        sTitlePanel.valid = false;
+    } else if (!sTitlePanel.valid) {
+        sTitlePanel = PanelInFront(kTitlePanelDistance, 0.0f);
+    }
     if (!sBuild.fromCamera && sFollowingCamera) {
         sFollowingCamera = false;
         sNeedsRecenter = true;
@@ -1890,6 +1949,17 @@ void CaptureTick() {
     sBuild.fade = gPlayState->transitionMode != TRANS_MODE_OFF || gPlayState->transitionTrigger != TRANS_TRIGGER_OFF ||
                   screenFilled || gPlayState->gameOverCtx.state != GAMEOVER_INACTIVE;
     sBuild.gameOver = gPlayState->gameOverCtx.state != GAMEOVER_INACTIVE;
+    if (player->stateFlags1 & PLAYER_STATE1_FLOOR_DISABLED) {
+        sFallingThrough = true;
+        sFallTicks = 0;
+    } else if ((player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || (player->stateFlags1 & PLAYER_STATE1_IN_WATER) ||
+               ++sFallTicks > kFallBlackoutTicks) {
+        sFallingThrough = false;
+    }
+    sBlackout = sFallingThrough ? std::min(sBlackout + 1.0f / kBlackoutInTicks, 1.0f)
+                                : std::max(sBlackout - 1.0f / kBlackoutOutTicks, 0.0f);
+    // Blacked out, the fade's part of the overlay is drawn in the eyes, where the blackout is (see Game_CutOverlay).
+    sBuild.fade = sBuild.fade || sBlackout > 0.0f;
     sBuild.message = gPlayState->msgCtx.msgMode != MSGMODE_NONE;
     sBuild.textboxY = R_TEXTBOX_Y;
     sBuild.stereo = true;
@@ -2218,8 +2288,20 @@ void UpdateLens() {
     Runtime& runtime = Runtime::Get();
     uint32_t refresh = runtime.GetRefreshRate();
     sLensRetry = std::max(sLensRetry - (refresh > 0 ? 1.0f / refresh : 0.0f), 0.0f);
-    bool atFace = HandAtFace(runtime.GetController(sLensHand).gripPose);
+    const ControllerState& state = runtime.GetController(sLensHand);
+    bool gripPressed = state.gripHeld && !sLensGripLatched;
+    sLensGripLatched = state.gripHeld;
+    bool atFace = HandAtFace(state.gripPose);
     bool on = gPlayState->actorCtx.lensActive;
+    if (gripPressed && !atFace && !Items_MenuOpen()) {
+        sHoldingLens = false;
+        if (on) {
+            RequestItem(ITEM_LENS);
+        }
+        runtime.Vibrate(sLensHand, 0.4f, 0.05f);
+        SPDLOG_INFO("[VR] Put the Lens of Truth away");
+        return;
+    }
     if (atFace != on && sLensRetry == 0.0f && (on || gSaveContext.magic > 0)) {
         // Using the lens again turns it on or off.
         RequestItem(ITEM_LENS);
@@ -2257,10 +2339,15 @@ void DrawReadySpell(PlayState* play) {
 
 // The Lens of Truth in the hand that took it.
 void DrawHeldLens(PlayState* play) {
-    if (!sHoldingLens) {
+    // Up at the eyes, the view is through it, and its frame would only be in the way.
+    if (!sHoldingLens || HandAtFace(Runtime::Get().GetController(sLensHand).gripPose)) {
         return;
     }
-    HandItem lens = { GID_LENS, { 0.0f, 0.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.0f, 0.0f, 1.0f }, 240.0f };
+    // Held by its handle, which runs down its -Y to 38 units below the glass's middle; its glass faces out over the
+    // knuckles (the model's +Z, which in the item plane's terms is halfway between L and N), with the glass above
+    // the thumb.
+    HandItem lens = { GID_LENS, { 0.0f, -28.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.7071068f, 0.0f, 0.7071068f },
+                      240.0f };
     LinkHand hand = (ControllerFor(LINK_LEFT) == sLensHand) ? LINK_LEFT : LINK_RIGHT;
     MtxF m;
     if (!HandItemMatrix(GET_PLAYER(play), hand, &lens, m)) {
@@ -2375,11 +2462,53 @@ bool HeldRotation(Player* player, Vec3s* out) {
 
 // Poses a forearm so that its hand, drawn next with its usual offset from the forearm, lands on the controller.
 // Moving the forearm rather than the hand keeps the wrist vertices, which are skinned to the forearm, attached.
+// Hands posed once a game tick, from the controllers as they were then, trailed the real controllers by a tick or
+// two in the frames between, more where the game ran slower, so the hands and what they held lagged and wobbled
+// against the wrists' HUD. The matrices drawn for each hand (its forearm, its hand and what it holds) are kept, with
+// where the grip was in the world that tick, and every frame they're moved as far as the grip has gone since (see
+// Game_AddEyeMatrices). sRecordingHand is the hand whose matrices are being kept (see Vr_OnMtxWritten), or -1.
+int sRecordingHand = -1;
+constexpr size_t kMaxHandMatrices = 64;
+
+// The grip's pose in the world, as a matrix in the game's row-vector layout, for the play space placed by anchor and
+// center (x, z meters).
+MtxF GripWorld(const Pose& grip, const Vec3f& anchor, float unitsPerMeter, float centerX, float centerZ) {
+    float playSpaceYaw[4] = { 0.0f, sinf(sYaw * 0.5f), 0.0f, cosf(sYaw * 0.5f) };
+    float orientation[4];
+    Multiply(playSpaceYaw, grip.orientation, orientation);
+    Vec3 at = ToWorldAround(grip.position, anchor, unitsPerMeter, centerX, centerZ);
+    MtxF out;
+    const Vec3 axes[3] = { Rotate(orientation, { 1.0f, 0.0f, 0.0f }), Rotate(orientation, { 0.0f, 1.0f, 0.0f }),
+                           Rotate(orientation, { 0.0f, 0.0f, 1.0f }) };
+    for (int i = 0; i < 3; i++) {
+        out.mf[i][0] = axes[i].x;
+        out.mf[i][1] = axes[i].y;
+        out.mf[i][2] = axes[i].z;
+        out.mf[i][3] = 0.0f;
+    }
+    out.mf[3][0] = at.x;
+    out.mf[3][1] = at.y;
+    out.mf[3][2] = at.z;
+    out.mf[3][3] = 1.0f;
+    return out;
+}
+
+// Starts keeping a hand's matrices, if it was posed on its controller this tick.
+void RecordHand(LinkHand hand) {
+    sRecordingHand = sBuild.handPlaced[hand] ? hand : -1;
+}
+
 void PlaceForearm(Player* player, LinkHand hand, s32 handLimb, Vec3f* pos, Vec3s* rot) {
     MtxF handTarget;
     if (!HandMatrix(player, hand, handTarget)) {
         return;
     }
+    Hand controller = ControllerFor(hand);
+    sBuild.handGrip[hand] = GripWorld(Runtime::Get().GetController(controller).gripPose, sBuild.anchor,
+                                      sBuild.unitsPerMeter, sCenter[0], sCenter[1]);
+    sBuild.handController[hand] = controller;
+    sBuild.handPlaced[hand] = true;
+    sRecordingHand = hand;
     LodLimb* limb = (LodLimb*)SEGMENTED_TO_VIRTUAL(player->skelAnime.skeleton[handLimb - 1]);
     Vec3f handPos = { (f32)limb->jointPos.x, (f32)limb->jointPos.y, (f32)limb->jointPos.z };
     Vec3s handRot = player->skelAnime.jointTable[handLimb];
@@ -2399,6 +2528,61 @@ void PlaceForearm(Player* player, LinkHand hand, s32 handLimb, Vec3f* pos, Vec3s
     Vr_PutWorldMatrix(&forearm);
     *pos = { 0.0f, 0.0f, 0.0f };
     *rot = { 0, 0, 0 };
+}
+
+// In VR a blade's hitbox is the blade as it's drawn. The game reaches well past the tip (another 1200 units on top of
+// a length that's already longer than the blade) and 1000 units to each side, so that with a camera behind Link a
+// swing feels like it connects; in VR that hit things a meter beyond the blade. Lengths are where each
+// hand-holding-it model's vertices end along the blade (+X in the hand model), measured from the game's own models,
+// with 5% to spare; the band from low to high (Y) and halfWidth (Z) are as thick as the fist that holds it.
+struct BladeShape {
+    float length;
+    float low;
+    float high;
+    float halfWidth;
+};
+
+void FillBladePoints(const BladeShape& shape, Vec3f* tips, Vec3f* bases) {
+    float length = shape.length * 1.05f;
+    float middle = (shape.low + shape.high) * 0.5f;
+    // The game's pattern: a point down the middle, for the trail, then two quads that cross along the blade.
+    if (tips != nullptr) {
+        tips[0] = { length, middle, 0.0f };
+        tips[1] = { length, shape.low, shape.halfWidth };
+        tips[2] = { length, shape.high, -shape.halfWidth };
+    }
+    if (bases != nullptr) {
+        bases[0] = { 0.0f, middle, 0.0f };
+        bases[1] = { 0.0f, shape.high, -shape.halfWidth };
+        bases[2] = { 0.0f, shape.low, shape.halfWidth };
+    }
+}
+
+// Indexed by Player_GetMeleeWeaponHeld: Master Sword, Kokiri Sword, Biggoron's Sword, Deku stick (its length is the
+// game's, which already follows how much of it is left), hammer, whose head is much taller than a blade.
+bool BladeShapeFor(Player* player, float gameLength, BladeShape& out) {
+    constexpr BladeShape kChildBlade = { 1666.0f, 0.0f, 500.0f, 250.0f };
+    s32 weapon = Player_GetMeleeWeaponHeld(player);
+    switch (weapon) {
+        case 1:
+            out = { 3387.0f, 0.0f, 680.0f, 300.0f };
+            break;
+        case 2:
+            out = kChildBlade;
+            break;
+        case 3:
+            out = { Player_HoldsBrokenKnife(player) ? 1474.0f : 5492.0f, 0.0f, 680.0f, 300.0f };
+            break;
+        case 4:
+            out = { gameLength, 0.0f, 500.0f, 250.0f };
+            break;
+        case 5:
+            out = { 2359.0f, -584.0f, 1157.0f, 440.0f };
+            break;
+        default:
+            return false;
+    }
+    return true;
 }
 
 // The damage of a normal slash with each melee weapon, as D_80854488 in z_player.c gives it. Indexed by
@@ -2548,6 +2732,11 @@ void Game_OnTickSubmitted() {
     sBuild.fadeEnd = nullptr;
     sBuild.skyboxCount = 0;
     sBuild.centerShift[0] = sBuild.centerShift[1] = 0.0f;
+    for (int hand = 0; hand < 2; hand++) {
+        sBuild.handMtx[hand].clear();
+        sBuild.handPlaced[hand] = false;
+    }
+    sRecordingHand = -1;
 
     float dx = sRender.anchor.x - sRenderPrevAnchor.x;
     float dy = sRender.anchor.y - sRenderPrevAnchor.y;
@@ -2655,7 +2844,8 @@ void Game_OnFrame() {
         UpdateFishing();
         UpdateTwoHanded();
 
-        // Closing either hand over the shoulder draws the sword into that hand, or puts it back.
+        // Closing either hand over the sword's shoulder (the sword hand's side) draws the sword into that hand, or
+        // puts it back. Over the other shoulder it does the same with the shield, so either can be out alone.
         if (sSwordGestureCooldown > 0.0f && runtime.GetRefreshRate() > 0) {
             sSwordGestureCooldown -= 1.0f / runtime.GetRefreshRate();
         }
@@ -2666,6 +2856,20 @@ void Game_OnFrame() {
             // While climbing, a hand reaching up past the shoulder is reaching for the next hold.
             if (!pressedNow || sSwordGestureCooldown > 0.0f || !HandOverShoulder(state.gripPose) ||
                 Climbing(GET_PLAYER(gPlayState))) {
+                continue;
+            }
+            bool swordOnRight = CVarGetInteger(CVAR_VR_SWORD_IN_RIGHT_HAND, 0) != 0;
+            if (OverRightShoulder(state.gripPose) != swordOnRight && HasShield()) {
+                sShieldOut = !sShieldOut;
+                sRefreshHandModels = true;
+                // Into the hand that reached for it, unless the sword is already there.
+                if (sShieldOut && !SwordDrawn(GET_PLAYER(gPlayState)) && CurrentTool() == HeldTool::None) {
+                    PutLinkHandOn(LINK_RIGHT, static_cast<Hand>(hand));
+                }
+                sSwordGestureCooldown = kSwordGestureCooldown;
+                runtime.Vibrate(static_cast<Hand>(hand), 0.4f, 0.05f);
+                SPDLOG_INFO("[VR] Shield {} with the {} hand", sShieldOut ? "drawn" : "put away",
+                            hand == HAND_LEFT ? "left" : "right");
                 continue;
             }
             bool drawn = SwordDrawn(GET_PLAYER(gPlayState));
@@ -2758,6 +2962,25 @@ void Game_AddEyeMatrices(int eye, float t, uint32_t width, uint32_t height,
 
     BuildProjection(view.fov, kNearPlane, sRender.zFar, width, height, replacements[sRender.projection]);
     BuildView(eyeWorld, view.pose.orientation, replacements[sRender.viewing]);
+
+    // The hands, moved from where their grips were when they were posed to where they are now (see RecordHand).
+    for (int hand = 0; hand < 2 && !sRender.fromCamera; hand++) {
+        const Pose& grip = Runtime::Get().GetController(sRender.handController[hand]).gripPose;
+        MtxF tickInverse;
+        if (!sRender.handPlaced[hand] || sRender.handMtx[hand].empty() || !grip.valid ||
+            SkinMatrix_Invert(&sRender.handGrip[hand], &tickInverse) != 0) {
+            continue;
+        }
+        MtxF now = GripWorld(grip, anchor, sRender.unitsPerMeter, sCenter[0] - sRender.centerShift[0] * back,
+                             sCenter[1] - sRender.centerShift[1] * back);
+        MtxF moved;
+        MultiplyRows(tickInverse, now, moved);
+        for (Mtx* mtx : sRender.handMtx[hand]) {
+            MtxF drawn;
+            Matrix_MtxToMtxF(mtx, &drawn);
+            MultiplyRows(drawn, moved, replacements[mtx]);
+        }
+    }
     sYaw = tickYaw;
 
     for (int i = 0; i < sRender.skyboxCount; i++) {
@@ -2835,6 +3058,8 @@ void Game_TakeItem(uint8_t item, Hand hand, int8_t slot) {
         sHoldingLens = true;
         sLensHand = hand;
         sLensRetry = 0.0f;
+        // The grip that chose it, if it did, has to be let go before it can put the lens away.
+        sLensGripLatched = true;
         Runtime::Get().Vibrate(hand, 0.3f, 0.04f);
         return;
     }
@@ -2866,7 +3091,7 @@ void Game_GetHudQuads(std::vector<HudQuad>& out) {
     if (!Game_SplitHud()) {
         return;
     }
-    if (sRender.fromCamera) {
+    if (sRender.title) {
         if (sTitlePanel.valid) {
             out.push_back(MakeQuad(sTitlePanel, kTitlePanelWidth, { 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT }));
         }
@@ -2946,6 +3171,26 @@ extern "C" void Vr_OnGraphBuilt(Gfx* overlayBranch, Gfx* overlay, Gfx* overlayEn
     SohVr::sBuild.overlayEnd = overlayEnd;
 }
 
+extern "C" void Vr_DrawBlackout(Gfx** gfxP) {
+    if (!Vr_IsWorldStereo() || SohVr::sBlackout <= 0.0f) {
+        return;
+    }
+    // As the game draws its own fades (see TransitionFade_Draw): a black rectangle over the whole view.
+    Gfx* gfx = *gfxP;
+    gDPPipeSync(gfx++);
+    gSPClearGeometryMode(gfx++, G_ZBUFFER | G_SHADE | G_CULL_BOTH | G_FOG | G_LIGHTING | G_TEXTURE_GEN |
+                                    G_TEXTURE_GEN_LINEAR | G_LOD | G_SHADING_SMOOTH);
+    gDPSetOtherMode(gfx++,
+                    G_AD_DISABLE | G_CD_MAGICSQ | G_CK_NONE | G_TC_FILT | G_TF_BILERP | G_TT_NONE | G_TL_TILE |
+                        G_TD_CLAMP | G_TP_NONE | G_CYC_1CYCLE | G_PM_1PRIMITIVE,
+                    G_AC_NONE | G_ZS_PIXEL | G_RM_CLD_SURF | G_RM_CLD_SURF2);
+    gDPSetCombineLERP(gfx++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE);
+    gDPSetPrimColor(gfx++, 0, 0, 0, 0, 0, static_cast<u8>(lroundf(SohVr::sBlackout * 255.0f)));
+    gDPFillRectangle(gfx++, 0, 0, gScreenWidth - 1, gScreenHeight - 1);
+    gDPPipeSync(gfx++);
+    *gfxP = gfx;
+}
+
 extern "C" void Vr_OnFadeDrawn(Gfx* fadeEnd) {
     SohVr::sBuild.fadeEnd = fadeEnd;
 }
@@ -3015,6 +3260,11 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
 
     if (Vr_IsWorldStereo()) {
         SohVr::Items_ApplyPending();
+        // The shield came out or went away: the hands' models are set again, with it or without it.
+        if (SohVr::sRefreshHandModels) {
+            SohVr::sRefreshHandModels = false;
+            Player_RefreshModelsVr(GET_PLAYER(gPlayState));
+        }
     }
 }
 
@@ -3107,10 +3357,18 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
     }
     Player* player = GET_PLAYER(play);
     if (!(player->stateFlags2 & PLAYER_STATE2_DISABLE_DRAW)) {
+        // What's in the hands follows them every frame, as the hands do (see SohVr::RecordHand).
+        SohVr::RecordHand(SohVr::LINK_LEFT);
         SohVr::DrawHandItem(play, player, SohVr::LINK_LEFT);
+        SohVr::RecordHand(SohVr::LINK_RIGHT);
         SohVr::DrawHandItem(play, player, SohVr::LINK_RIGHT);
+        SohVr::RecordHand((SohVr::ControllerFor(SohVr::LINK_LEFT) == SohVr::sMaskHand) ? SohVr::LINK_LEFT
+                                                                                         : SohVr::LINK_RIGHT);
         SohVr::DrawHeldMask(play);
+        SohVr::RecordHand((SohVr::ControllerFor(SohVr::LINK_LEFT) == SohVr::sLensHand) ? SohVr::LINK_LEFT
+                                                                                         : SohVr::LINK_RIGHT);
         SohVr::DrawHeldLens(play);
+        SohVr::sRecordingHand = -1;
         SohVr::DrawReadySpell(play);
         DrawAmmoCounter(play);
         SohVr::Aim_DrawShotMarker(play, player);
@@ -3203,6 +3461,19 @@ extern "C" bool Vr_DropNeedsGrab(s16 type) {
     }
 }
 
+extern "C" void Vr_OnMtxWritten(Mtx* mtx) {
+    int hand = SohVr::sRecordingHand;
+    if (hand < 0) {
+        return;
+    }
+    std::vector<Mtx*>& kept = SohVr::sBuild.handMtx[hand];
+    if (kept.size() < SohVr::kMaxHandMatrices) {
+        kept.push_back(mtx);
+    } else {
+        SohVr::sRecordingHand = -1;
+    }
+}
+
 extern "C" void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot) {
     // During a spin attack the sword goes where the game's spin takes it, around the player, so it sweeps everything
     // around them; the hands come back to the controllers after.
@@ -3211,6 +3482,7 @@ extern "C" void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList
     }
     switch (limbIndex) {
         case PLAYER_LIMB_L_FOREARM:
+            // Keeps this hand's matrices from here to its hand limb (see RecordHand).
             SohVr::PlaceForearm(player, SohVr::LINK_LEFT, PLAYER_LIMB_L_HAND, pos, rot);
             *dList = nullptr;
             break;
@@ -3233,6 +3505,7 @@ extern "C" void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList
             break;
         default:
             *dList = nullptr;
+            SohVr::sRecordingHand = -1;
             break;
     }
 }
@@ -3321,6 +3594,16 @@ extern "C" bool Vr_LimbMirrored(Player* player, s32 limbIndex) {
         default:
             return false;
     }
+}
+
+extern "C" bool Vr_BladePoints(Player* player, f32 gameLength, Vec3f* tips, Vec3f* bases) {
+    SohVr::BladeShape shape;
+    if (!Vr_IsWorldStereo() || Vr_ViewFromCamera() || player != GET_PLAYER(gPlayState) ||
+        !SohVr::BladeShapeFor(player, gameLength, shape)) {
+        return false;
+    }
+    SohVr::FillBladePoints(shape, tips, bases);
+    return true;
 }
 
 extern "C" bool Vr_HoldsBlade(Player* player) {
@@ -3873,6 +4156,17 @@ extern "C" bool Vr_LaunchThrownNut(Actor* nut) {
     nut->velocity.y = v.y;
     nut->gravity = -1.2f;
     return true;
+}
+
+extern "C" s32 Vr_DrawDistance(void) {
+    return Vr_IsWorldStereo() ? std::clamp(CVarGetInteger(CVAR_VR_DRAW_DISTANCE, 3), 1, 5) : 1;
+}
+
+extern "C" s32 Vr_ShieldOut(Player* player) {
+    if (!Vr_IsWorldStereo() || Vr_ViewFromCamera() || player != GET_PLAYER(gPlayState)) {
+        return -1;
+    }
+    return (SohVr::sShieldOut && SohVr::HasShield()) ? 1 : 0;
 }
 
 extern "C" bool Vr_HoldsShield(Player* player) {

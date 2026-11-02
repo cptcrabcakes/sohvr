@@ -2872,6 +2872,17 @@ void Actor_DrawLensActors(PlayState* play, s32 numInvisibleActors, Actor** invis
 
     gfxCtx = play->state.gfxCtx;
 
+    // In VR the lens is held up to the eyes, so the whole view is seen through it instead of a circle in the middle
+    // of the screen: what it hides is gone and what it shows is there, wherever the player looks.
+    if (Vr_IsWorldStereo()) {
+        if (play->roomCtx.curRoom.lensMode == LENS_MODE_HIDE_ACTORS) {
+            for (i = 0; i < numInvisibleActors; i++) {
+                Actor_Draw(play, invisibleActors[i]);
+            }
+        }
+        return;
+    }
+
     OPEN_DISPS(gfxCtx);
 
     gDPNoOpString(POLY_OPA_DISP++, "魔法のメガネ START", 0); // "Magic lens START"
@@ -2998,11 +3009,24 @@ s32 Ship_CalcShouldDrawAndUpdate(PlayState* play, Actor* actor, Vec3f* projected
     }
 
     s32 multiplier = CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1);
-    multiplier = MAX(multiplier, 1);
+    // In VR things far away stay drawn, since the player can look at them from anywhere (see Vr_DrawDistance).
+    multiplier = MAX(MAX(multiplier, 1), Vr_DrawDistance());
 
     // Some actors have a really short forward value, so we need to add to it before the multiplier to increase the
     // final strength of the forward culling
     f32 adder = (actor->uncullZoneForward < 500) ? 1000.0f : 0.0f;
+
+    // In VR, as in Actor_CullingVolumeTest, it doesn't matter which way the player faces: the head turns between
+    // ticks faster than a test of the view's direction can follow.
+    if (Vr_IsWorldStereo()) {
+        if (Math_Vec3f_DistXYZ(&actor->world.pos, &play->view.eye) <
+            (((actor->uncullZoneForward + adder) * multiplier) + actor->uncullZoneScale)) {
+            *shouldDraw = true;
+            *shouldUpdate = true;
+            return true;
+        }
+        return false;
+    }
 
     if ((projectedPos->z > -actor->uncullZoneScale) &&
         (projectedPos->z < (((actor->uncullZoneForward + adder) * multiplier) + actor->uncullZoneScale))) {
@@ -3092,7 +3116,7 @@ void Actor_DrawAll(PlayState* play, ActorContext* actorCtx) {
             bool shipShouldDraw = false;
             bool shipShouldUpdate = false;
             if ((HREG(64) != 1) || ((HREG(65) != -1) && (HREG(65) != HREG(66))) || (HREG(70) == 0)) {
-                if (CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1) > 1 ||
+                if (CVarGetInteger(CVAR_ENHANCEMENT("DisableDrawDistance"), 1) > 1 || Vr_DrawDistance() > 1 ||
                     CVarGetInteger(CVAR_ENHANCEMENT("WidescreenActorCulling"), 0)) {
                     Ship_CalcShouldDrawAndUpdate(play, actor, &actor->projectedPos, actor->projectedW, &shipShouldDraw,
                                                  &shipShouldUpdate);

@@ -5,6 +5,7 @@
  */
 
 #include "z_fishing.h"
+#include "soh/Enhancements/vr/Vr.h"
 
 #include "overlays/actors/ovl_En_Kanban/z_en_kanban.h"
 #include "objects/object_fish/object_fish.h"
@@ -4355,6 +4356,17 @@ void Fishing_HandleLilyPadContact(FishingProp* prop, Vec3f* entityPos, u8 fishTi
     }
 }
 
+// Whether a pond prop or fish at a projected position is in view. In VR the player looks around freely and further
+// (see Vr_DrawDistance) than the game's camera did, so they're drawn wider and further out, and don't pop in at the
+// edges of the view.
+static s32 Fishing_InViewVr(Vec3f* projectedPos, f32 drawDistance) {
+    if (Vr_IsWorldStereo()) {
+        return (projectedPos->z > -100.0f) && (projectedPos->z < (drawDistance * Vr_DrawDistance())) &&
+               (fabsf(projectedPos->x) < (100.0f + (2.0f * projectedPos->z)));
+    }
+    return (projectedPos->z < drawDistance) && (fabsf(projectedPos->x) < (100.0f + projectedPos->z));
+}
+
 void Fishing_UpdatePondProps(PlayState* play) {
     FishingProp* prop = &sPondProps[0];
     Player* player = GET_PLAYER(play);
@@ -4368,8 +4380,7 @@ void Fishing_UpdatePondProps(PlayState* play) {
 
             SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &prop->pos, &prop->projectedPos, &sProjectedW);
 
-            if ((prop->projectedPos.z < prop->drawDistance) &&
-                (fabsf(prop->projectedPos.x) < (100.0f + prop->projectedPos.z))) {
+            if (Fishing_InViewVr(&prop->projectedPos, prop->drawDistance)) {
                 prop->shouldDraw = true;
             }
 
@@ -4624,7 +4635,7 @@ void Fishing_UpdateGroupFishes(PlayState* play) {
 
             SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &fish->pos, &fish->projectedPos, &sProjectedW);
 
-            if ((fish->projectedPos.z < 400.0f) && (fabsf(fish->projectedPos.x) < (100.0f + fish->projectedPos.z))) {
+            if (Fishing_InViewVr(&fish->projectedPos, 400.0f)) {
                 fish->shouldDraw = true;
             } else {
                 fish->shouldDraw = false;
@@ -5637,7 +5648,9 @@ void Fishing_UpdateOwner(Actor* thisx, PlayState* play2) {
         Play_CameraSetAtEye(play, sSubCamId, &sCameraAt, &sCameraEye);
         Math_ApproachF(&sSubCamVelFactor, 1.0f, 1.0f, 0.02f);
 
-        if (sCameraEye.y <= (WATER_SURFACE_Y(play) + 1.0f)) {
+        // In VR the player watches from Link, not from this camera following the lure, so the water's look goes by
+        // where their eyes are.
+        if ((Vr_IsWorldStereo() ? play->view.eye.y : sCameraEye.y) <= (WATER_SURFACE_Y(play) + 1.0f)) {
             Environment_EnableUnderwaterLights(play, 1);
             if (sFishingFoggy != 0) {
                 play->envCtx.adjFogNear = -0xB2;
@@ -5875,7 +5888,9 @@ void Fishing_DrawOwner(Actor* thisx, PlayState* play) {
         }
     }
 
-    if ((sFishingPlayingState != 0) && sIsRodVisible) {
+    // In VR the rod can be put away, so it's only drawn while Link holds it.
+    if ((sFishingPlayingState != 0) && sIsRodVisible &&
+        (!Vr_IsWorldStereo() || (GET_PLAYER(play)->heldItemAction == PLAYER_IA_FISHING_POLE))) {
         Fishing_DrawRod(play);
         Fishing_UpdateLinePos(sReelLinePos);
         Fishing_UpdateLine(play, &sRodTipPos, sReelLinePos, sReelLineRot, sReelLineUnk);

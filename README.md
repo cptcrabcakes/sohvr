@@ -30,14 +30,14 @@ Your items, gear, the pause menu and the VR settings are all on the item wheel. 
 3. **Groups open their own ring.** Take one the same way. The middle of a ring goes back.
 4. **Press Y again** to close the wheel.
 
-The first ring's groups, clockwise from the top. Each shows the first thing in it, and only what you've found is there.
+The first ring's groups, clockwise from the top. Each shows the first thing in it (Consumables shows a bottle), and only what you've found is there.
 
 | Group | What's in it |
 | - | - |
 | Ranged | Slingshot, bow, boomerang, hookshot or longshot |
-| Explosives/Power Weapons | Bombs, bombchus, Megaton Hammer, Deku sticks, magic beans |
+| Explosives/Power Weapons | Bombs, bombchus, Megaton Hammer, Deku sticks |
 | Magic | Lens of Truth, fire, ice and light arrows, Nayru's Love, Farore's Wind, Din's Fire |
-| Consumables | Deku nuts and bottles |
+| Consumables (a bottle) | Deku nuts, magic beans and bottles |
 | Quest | Ocarina, and the child and adult trade items |
 | Gear | Shields, swords, boots and tunics, each in its own ring |
 | System (the ship) | The pause menu (the map) and the VR settings (the compass) |
@@ -46,7 +46,8 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 
 | To | Do this |
 | - | - |
-| Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
+| Draw or put away the sword | Reach over your sword hand's shoulder and squeeze the grip |
+| Take out or put away the shield | Reach over your other shoulder and squeeze the grip. The sword and shield come out separately, so you can hold just one. |
 | Attack | Swing the sword. Swing hard for a jump attack's damage. The blade sparks and stops against walls, and the hammer shakes the ground. |
 | Spin attack | Hold your sword hand's trigger to charge, let go to spin; or turn around for real with the sword held out |
 | Block | Hold the shield where the attack is coming from |
@@ -65,7 +66,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire. Its laser turns green where it will hook. |
 | Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
 | Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
-| See through the Lens of Truth | Take it from the wheel and hold it up to your eye |
+| See through the Lens of Truth | Take it from the wheel and hold it up to your eye: fake walls vanish and hidden things appear wherever you look. Squeeze that hand's grip away from your face to put it away. |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
@@ -81,7 +82,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Right stick left/right | Turn |
 | Right stick down | L; talks to Navi when she has something to say |
 | Right stick click | Recenter the view, or bring the floating screen back |
-| Left stick click or Menu button | Pause |
+| Menu button (left hand) | Pause; also the ship on the item wheel's System ring |
 | A | Talk, open, climb, roll; while carrying something, put it down or throw it |
 | B | Advance text, and put the ocarina away |
 

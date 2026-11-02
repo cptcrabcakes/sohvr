@@ -73,8 +73,8 @@ struct Entry {
 };
 
 // The rings, as a tree. The first ring's sections: Ranged & Tools (slingshot, bow, boomerang, hookshot), Explosives &
-// Heavy (bombs, bombchus, hammer, Deku sticks, beans), Magic & Spells (the lens, the magic arrows, the spells), Bottles
-// & Consumables (Deku nuts and the bottles), Quest & Lore (the ocarina and the trade items), Equipment & Gear (a ring of
+// Heavy (bombs, bombchus, hammer, Deku sticks), Magic & Spells (the lens, the magic arrows, the spells), Bottles &
+// Consumables (Deku nuts, beans and the bottles, shown by a bottle), Quest & Lore (the ocarina and the trade items), Equipment & Gear (a ring of
 // rings: shields, swords, boots, tunics) and System (the pause menu and the VR settings).
 enum MenuCategory {
     CAT_ROOT,
@@ -176,8 +176,46 @@ bool EquipUsableAtAge(u8 type, u8 value) {
                                  required);
 }
 
+// Whether the game lets an item be used here and now, as it decides which C buttons to grey out (see
+// Interface_UpdateButtonsPart2 in z_parameter.c): nothing on a ladder or while crawling, only the hookshot under
+// water, and whatever the scene's own restrictions allow.
+bool ItemAllowedHere(u8 item) {
+    if (gPlayState == nullptr) {
+        return true;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    if ((player->stateFlags1 & PLAYER_STATE1_CLIMBING_LADDER) || (player->stateFlags2 & PLAYER_STATE2_CRAWLING)) {
+        return false;
+    }
+    bool hookshot = item == ITEM_HOOKSHOT || item == ITEM_LONGSHOT;
+    s32 hazard = Player_GetEnvironmentalHazard(gPlayState);
+    if (hazard >= 2 && hazard < 5) {
+        return hazard == 2 && hookshot;
+    }
+    const auto& restrictions = gPlayState->interfaceCtx.restrictions;
+    bool ocarina = item == ITEM_OCARINA_FAIRY || item == ITEM_OCARINA_TIME;
+    if (item >= ITEM_BOTTLE && item <= ITEM_POE) {
+        return restrictions.bottles == 0;
+    }
+    if (item >= ITEM_WEIRD_EGG && item <= ITEM_CLAIM_CHECK) {
+        return restrictions.tradeItems == 0 || !GameInteractor_Should(VB_DISABLE_TRADE_ITEM_BUTTON, true, item);
+    }
+    if (ocarina) {
+        return restrictions.ocarina == 0;
+    }
+    if ((hookshot && restrictions.hookshot != 0) || (item == ITEM_FARORES_WIND && restrictions.farores != 0) ||
+        ((item == ITEM_DINS_FIRE || item == ITEM_NAYRUS_LOVE) && restrictions.dinsNayrus != 0)) {
+        return false;
+    }
+    if (restrictions.all != 0) {
+        // The treasure chest shop lets the Lens of Truth through.
+        return gPlayState->sceneNum == SCENE_TREASURE_BOX_SHOP && item == ITEM_LENS;
+    }
+    return true;
+}
+
 void AddItem(std::vector<Entry>& out, u8 item) {
-    if (item < ITEM_NONE_FE && ItemUsableAtAge(item)) {
+    if (item < ITEM_NONE_FE && ItemUsableAtAge(item) && ItemAllowedHere(item)) {
         out.push_back({ EntryKind::UseItem, ItemModel(item), item });
     }
 }
@@ -223,7 +261,13 @@ void AddCategory(std::vector<Entry>& out, int category) {
     if (entries.size() == 1) {
         out.push_back(entries[0]);
     } else if (!entries.empty()) {
-        Entry entry = { EntryKind::Category, (category == CAT_SYSTEM) ? kShipModel : entries[0].model };
+        s16 model = entries[0].model;
+        if (category == CAT_SYSTEM) {
+            model = kShipModel;
+        } else if (category == CAT_CONSUMABLES) {
+            model = GID_BOTTLE;
+        }
+        Entry entry = { EntryKind::Category, model };
         entry.category = category;
         out.push_back(entry);
     }
@@ -249,7 +293,6 @@ std::vector<Entry> CategoryEntries(int category) {
             AddAmmoItem(out, ITEM_BOMBCHU);
             AddOwnedItem(out, ITEM_HAMMER);
             AddAmmoItem(out, ITEM_STICK);
-            AddAmmoItem(out, ITEM_BEAN);
             break;
         case CAT_MAGIC:
             // The lens at the top, the magic arrows down the right and the spells up the left.
@@ -271,6 +314,7 @@ std::vector<Entry> CategoryEntries(int category) {
             break;
         case CAT_CONSUMABLES:
             AddAmmoItem(out, ITEM_NUT);
+            AddAmmoItem(out, ITEM_BEAN);
             for (int slot = SLOT_BOTTLE_1; slot <= SLOT_BOTTLE_4; slot++) {
                 size_t before = out.size();
                 AddItem(out, gSaveContext.inventory.items[slot]);
@@ -529,7 +573,7 @@ constexpr float kPanelDrop = 0.15f;    // and below eye level
 constexpr float kRepeatDelay = 0.4f;   // seconds a number row is held before it repeats
 constexpr float kRepeatInterval = 0.08f;
 
-enum class RowKind { Switch, Number, Recenter, Close };
+enum class RowKind { Switch, Number, Choice, Recenter, Page, Close };
 
 struct PanelRow {
     const char* label;
@@ -543,6 +587,7 @@ struct PanelRow {
     const char* on;
     const char* unit; // after a number
     const char* zero; // shown instead of a number that's 0, if set
+    const char* const* choices = nullptr; // a choice's names, from min to max
 };
 
 constexpr PanelRow SwitchRow(const char* label, const char* cvar, const char* off = "OFF", const char* on = "ON") {
@@ -554,11 +599,24 @@ constexpr PanelRow NumberRow(const char* label, const char* cvar, int defaultVal
     return { label, RowKind::Number, cvar, defaultValue, min, max, step, "", "", unit, zero };
 }
 
+// A switch that's on unless turned off, like the menu's checkboxes for it.
+constexpr PanelRow OnRow(const char* label, const char* cvar) {
+    return { label, RowKind::Switch, cvar, 1, 0, 1, 1, "OFF", "ON", "", nullptr };
+}
+
+// One of a few named settings, stepped through by pointing at the row's left or right half.
+constexpr PanelRow ChoiceRow(const char* label, const char* cvar, int count, const char* const* choices) {
+    return { label, RowKind::Choice, cvar, 0, 0, count - 1, 1, "", "", "", nullptr, choices };
+}
+
 constexpr PanelRow ActionRow(const char* label, RowKind kind) {
     return { label, kind, nullptr, 0, 0, 0, 0, "", "", "", nullptr };
 }
 
-const PanelRow kPanelRows[] = {
+constexpr const char* kTitleViews[] = { "CAMERA", "LINK", "SCREEN" };
+
+// Two pages: comfort and the view on the first, how things are played on the second, each with a row to the other.
+const PanelRow kComfortRows[] = {
     SwitchRow("SEATED MODE", CVAR_SETTING("VR.Seated")),
     NumberRow("YOUR HEIGHT", CVAR_SETTING("VR.PlayerHeight"), 170, 100, 220, 1, " CM"),
     NumberRow("ADULT SCALE", CVAR_SETTING("VR.AdultWorldScale"), 100, 70, 150, 5, "%"),
@@ -566,19 +624,36 @@ const PanelRow kPanelRows[] = {
     NumberRow("SNAP TURN", CVAR_SETTING("VR.SnapTurn"), 30, 0, 90, 15, " DEG", "SMOOTH"),
     SwitchRow("MOVEMENT", CVAR_SETTING("VR.HandMovement"), "HEAD", "HAND"),
     SwitchRow("SWORD HAND", CVAR_SETTING("VR.SwordInRightHand"), "LEFT", "RIGHT"),
-    SwitchRow("GRAB DROPS", CVAR_SETTING("VR.GrabDrops")),
-    // On unless turned off, like the menu's checkboxes.
-    { "WHISTLE NOTES", RowKind::Switch, CVAR_SETTING("VR.MicOcarina"), 1, 0, 1, 1, "OFF", "ON", "", nullptr },
-    { "CLIMB BY HAND", RowKind::Switch, CVAR_SETTING("VR.ClimbByHand"), 1, 0, 1, 1, "OFF", "ON", "", nullptr },
+    NumberRow("DRAW DISTANCE", CVAR_SETTING("VR.DrawDistance"), 3, 1, 5, 1, "X"),
+    ChoiceRow("TITLE SCREEN", CVAR_SETTING("VR.TitleView"), 3, kTitleViews),
     ActionRow("RECENTER VIEW", RowKind::Recenter),
+    ActionRow("MORE SETTINGS >", RowKind::Page),
     ActionRow("CLOSE", RowKind::Close),
 };
-constexpr int kPanelRowCount = sizeof(kPanelRows) / sizeof(kPanelRows[0]);
+const PanelRow kPlayRows[] = {
+    OnRow("AIM MARKER", CVAR_SETTING("VR.ShotMarker")),
+    SwitchRow("AIM PATH", CVAR_SETTING("VR.ShotPath")),
+    SwitchRow("GRAB DROPS", CVAR_SETTING("VR.GrabDrops")),
+    OnRow("WHISTLE NOTES", CVAR_SETTING("VR.MicOcarina")),
+    OnRow("CLIMB BY HAND", CVAR_SETTING("VR.ClimbByHand")),
+    OnRow("GRAB LADDERS", CVAR_SETTING("VR.GrabToClimb")),
+    OnRow("ARMS TO RUN", CVAR_SETTING("VR.ArmRun")),
+    OnRow("ARMS TO SWIM", CVAR_SETTING("VR.SwimStrokes")),
+    OnRow("NOD TO ANSWER", CVAR_SETTING("VR.HeadAnswers")),
+    OnRow("VR TUTORIALS", CVAR_SETTING("VR.Guidance")),
+    ActionRow("< BACK", RowKind::Page),
+    ActionRow("CLOSE", RowKind::Close),
+};
+constexpr int kPanelPageCount = 2;
+const PanelRow* const kPanelPages[kPanelPageCount] = { kComfortRows, kPlayRows };
+constexpr int kPanelPageRows[kPanelPageCount] = { sizeof(kComfortRows) / sizeof(kComfortRows[0]),
+                                                  sizeof(kPlayRows) / sizeof(kPlayRows[0]) };
 
 struct Panel {
     bool open = false;
     bool onScreen = false;
     bool changed = false;
+    int page = 0;
     Pose pose;
     int hovered = -1;
     float cursor[2] = {};
@@ -652,8 +727,16 @@ bool PanelPoint(const ControllerState& state, float& x, float& y) {
     return x >= kPanelX && x < kPanelX + kPanelW && y >= kPanelY && y < kPanelY + kPanelH;
 }
 
+// The rows of the page the panel is on.
+const PanelRow* PageRows(int& count) {
+    count = kPanelPageRows[sPanel.page];
+    return kPanelPages[sPanel.page];
+}
+
 int PanelRowAt(float y) {
-    for (int i = 0; i < kPanelRowCount; i++) {
+    int count;
+    PageRows(count);
+    for (int i = 0; i < count; i++) {
         float top = kPanelFirstRow + i * kPanelRowStep - 3.0f;
         if (y >= top && y < top + kPanelRowStep) {
             return i;
@@ -663,7 +746,8 @@ int PanelRowAt(float y) {
 }
 
 void ActivateRow(int row, float x, Hand hand) {
-    const PanelRow& r = kPanelRows[row];
+    int count;
+    const PanelRow& r = PageRows(count)[row];
     switch (r.kind) {
         case RowKind::Switch:
             CVarSetInteger(r.cvar, CVarGetInteger(r.cvar, r.defaultValue) ? 0 : 1);
@@ -676,8 +760,21 @@ void ActivateRow(int row, float x, Hand hand) {
             sPanel.changed = true;
             break;
         }
+        case RowKind::Choice: {
+            int value = CVarGetInteger(r.cvar, r.defaultValue);
+            value += (x < kPanelX + kPanelW * 0.5f) ? -1 : 1;
+            CVarSetInteger(r.cvar, (value + r.max + 1) % (r.max + 1));
+            sPanel.changed = true;
+            break;
+        }
         case RowKind::Recenter:
             Game_Recenter();
+            break;
+        case RowKind::Page:
+            sPanel.page = (sPanel.page + 1) % kPanelPageCount;
+            sPanel.hovered = -1;
+            sPanel.handRow[HAND_LEFT] = sPanel.handRow[HAND_RIGHT] = -1;
+            sPanel.repeatHand = -1;
             break;
         case RowKind::Close:
             ClosePanel();
@@ -722,7 +819,8 @@ void UpdatePanel(bool onScreen, bool menuPressed, const bool choosePressed[HAND_
             sPanel.repeatHand = hand;
             sPanel.repeatTimer = kRepeatDelay;
             ActivateRow(row, sPanel.handX[hand], static_cast<Hand>(hand));
-        } else if (hand == sPanel.repeatHand && held && row >= 0 && kPanelRows[row].kind == RowKind::Number) {
+        } else if (hand == sPanel.repeatHand && held && row >= 0 &&
+                   kPanelPages[sPanel.page][row].kind == RowKind::Number) {
             sPanel.repeatTimer -= frame;
             if (sPanel.repeatTimer <= 0.0f) {
                 sPanel.repeatTimer = kRepeatInterval;
@@ -1174,10 +1272,13 @@ void DrawPanel(PlayState* play) {
     GfxPrint_Init(&printer);
     GfxPrint_Open(&printer, overlay);
     GfxPrint_SetColor(&printer, 255, 230, 120, 255);
-    GfxPrint_SetPosPx(&printer, kPanelX + (kPanelW - 11 * 8) / 2, kPanelY + 8);
-    GfxPrint_Printf(&printer, "VR SETTINGS");
-    for (int i = 0; i < kPanelRowCount; i++) {
-        const PanelRow& row = kPanelRows[i];
+    const char* title = sPanel.page == 0 ? "VR SETTINGS" : "VR SETTINGS 2";
+    GfxPrint_SetPosPx(&printer, kPanelX + (kPanelW - static_cast<int>(strlen(title)) * 8) / 2, kPanelY + 8);
+    GfxPrint_Printf(&printer, "%s", title);
+    int rowCount;
+    const PanelRow* rows = PageRows(rowCount);
+    for (int i = 0; i < rowCount; i++) {
+        const PanelRow& row = rows[i];
         int y = kPanelFirstRow + i * kPanelRowStep;
         GfxPrint_SetColor(&printer, 255, 255, 255, 255);
         GfxPrint_SetPosPx(&printer, kPanelX + 10, y);
@@ -1185,6 +1286,9 @@ void DrawPanel(PlayState* play) {
         char value[16] = "";
         if (row.kind == RowKind::Switch) {
             snprintf(value, sizeof(value), "%s", CVarGetInteger(row.cvar, row.defaultValue) ? row.on : row.off);
+        } else if (row.kind == RowKind::Choice) {
+            int choice = std::clamp(CVarGetInteger(row.cvar, row.defaultValue), row.min, row.max);
+            snprintf(value, sizeof(value), "%s", row.choices[choice]);
         } else if (row.kind == RowKind::Number) {
             int number = CVarGetInteger(row.cvar, row.defaultValue);
             if (number == 0 && row.zero != nullptr) {

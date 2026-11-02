@@ -43,13 +43,17 @@ Vec3f Unit(const Vec3f& v) {
     return length > 0.0001f ? Vec3f{ v.x / length, v.y / length, v.z / length } : Vec3f{ 0.0f, 1.0f, 0.0f };
 }
 
-// Plain color, see-through, both sides, on top of what's at the same depth.
-void SetupFlat(Gfx*& xlu, Color_RGBA8 color) {
+// Plain color, see-through, both sides, on top of what's at the same depth, or on top of everything.
+void SetupFlat(Gfx*& xlu, Color_RGBA8 color, bool onTop = false) {
     gDPPipeSync(xlu++);
     gSPTexture(xlu++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
     gSPClearGeometryMode(xlu++, G_LIGHTING | G_CULL_BOTH | G_TEXTURE_GEN | G_FOG);
     gDPSetCombineMode(xlu++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
-    gDPSetRenderMode(xlu++, G_RM_ZB_XLU_SURF, G_RM_ZB_XLU_SURF2);
+    if (onTop) {
+        gDPSetRenderMode(xlu++, G_RM_XLU_SURF, G_RM_XLU_SURF2);
+    } else {
+        gDPSetRenderMode(xlu++, G_RM_ZB_XLU_SURF, G_RM_ZB_XLU_SURF2);
+    }
     gDPSetPrimColor(xlu++, 0, 0, color.r, color.g, color.b, color.a);
 }
 
@@ -71,9 +75,9 @@ void PutBasis(GraphicsContext* gfxCtx, Gfx*& xlu, const Vec3f& at, const Vec3f& 
     gSPMatrix(xlu++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 }
 
-// A flat ring around a point, facing along normal (game units).
+// A flat ring around a point, facing along normal (game units), drawn over everything if onTop.
 void DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, float width,
-              Color_RGBA8 color) {
+              Color_RGBA8 color, bool onTop = false) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
     Vec3f up = Unit(normal);
     Vec3f side = Unit(Cross(fabsf(up.y) < 0.9f ? Vec3f{ 0.0f, 1.0f, 0.0f } : Vec3f{ 1.0f, 0.0f, 0.0f }, up));
@@ -94,7 +98,7 @@ void DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float r
         }
     }
     Gfx*& xlu = gfxCtx->polyXlu.p;
-    SetupFlat(xlu, color);
+    SetupFlat(xlu, color, onTop);
     PutBasis(gfxCtx, xlu, center, side, up, across);
     gSPVertex(xlu++, reinterpret_cast<uintptr_t>(vertices), kRingSegments * 2, 0);
     for (int i = 0; i < kRingSegments; i++) {
@@ -132,8 +136,58 @@ void DrawBeam(PlayState* play, const Vec3f& from, const Vec3f& to, float width, 
     gSP2Triangles(xlu++, 0, 1, 2, 0, 1, 3, 2, 0);
 }
 
-// Where a shot leaving from origin along direction lands, as EnArrow flies it, and the points it passes each tick.
-// False if it vanishes before hitting anything.
+// Where a segment first enters an upright cylinder standing on base, as a share of the way along it. One that starts
+// inside enters at once.
+bool SegmentHitsCylinder(const Vec3f& a, const Vec3f& b, const Vec3f& base, float radius, float height, float* t) {
+    float dx = b.x - a.x;
+    float dz = b.z - a.z;
+    float fx = a.x - base.x;
+    float fz = a.z - base.z;
+    float qa = dx * dx + dz * dz;
+    float qb = 2.0f * (fx * dx + fz * dz);
+    float qc = fx * fx + fz * fz - radius * radius;
+    float enter = 0.0f;
+    if (qc > 0.0f) {
+        float discriminant = qb * qb - 4.0f * qa * qc;
+        if (qa < 0.0001f || discriminant < 0.0f) {
+            return false;
+        }
+        enter = (-qb - sqrtf(discriminant)) / (2.0f * qa);
+        if (enter < 0.0f || enter > 1.0f) {
+            return false;
+        }
+    }
+    float y = a.y + (b.y - a.y) * enter;
+    if (y < base.y || y > base.y + height) {
+        return false;
+    }
+    *t = enter;
+    return true;
+}
+
+// The first enemy body a segment passes into, as a share of the way along it, by each enemy's own collision
+// cylinder. Arrows and seeds stop at them, so the marker goes there instead of on the ground behind.
+bool SegmentHitsEnemy(PlayState* play, const Vec3f& a, const Vec3f& b, float* t) {
+    bool hit = false;
+    for (int category : { ACTORCAT_ENEMY, ACTORCAT_BOSS }) {
+        for (Actor* actor = play->actorCtx.actorLists[category].head; actor != nullptr; actor = actor->next) {
+            const CollisionCheckInfo& info = actor->colChkInfo;
+            if (actor->update == nullptr || info.cylRadius <= 0 || info.cylHeight <= 0) {
+                continue;
+            }
+            Vec3f base = { actor->world.pos.x, actor->world.pos.y + info.cylYShift, actor->world.pos.z };
+            float along;
+            if (SegmentHitsCylinder(a, b, base, info.cylRadius, info.cylHeight, &along) && (!hit || along < *t)) {
+                *t = along;
+                hit = true;
+            }
+        }
+    }
+    return hit;
+}
+
+// Where a shot leaving from origin along direction lands, as EnArrow flies it, on a wall, the ground or an enemy, and
+// the points it passes each tick. False if it vanishes before hitting anything.
 bool FlyShot(PlayState* play, Vec3f origin, Vec3f direction, bool seed, float power, Vec3f* landing, Vec3f* normal,
              Vec3f* path, int* pathCount) {
     Vec3f forward = Unit(direction);
@@ -157,7 +211,17 @@ bool FlyShot(PlayState* play, Vec3f origin, Vec3f direction, bool seed, float po
         Vec3f hit;
         CollisionPoly* poly = nullptr;
         s32 bgId = 0;
-        if (BgCheck_ProjectileLineTest(&play->colCtx, &pos, &next, &hit, &poly, true, true, true, true, &bgId)) {
+        bool wall = BgCheck_ProjectileLineTest(&play->colCtx, &pos, &next, &hit, &poly, true, true, true, true, &bgId);
+        Vec3f end = wall ? hit : next;
+        float along;
+        if (SegmentHitsEnemy(play, pos, end, &along)) {
+            // On the enemy, facing back the way the shot came.
+            *landing = { pos.x + (end.x - pos.x) * along, pos.y + (end.y - pos.y) * along,
+                         pos.z + (end.z - pos.z) * along };
+            *normal = { pos.x - end.x, pos.y - end.y, pos.z - end.z };
+            return true;
+        }
+        if (wall) {
             *landing = hit;
             *normal = { COLPOLY_GET_NORMAL(poly->normal.x), COLPOLY_GET_NORMAL(poly->normal.y),
                         COLPOLY_GET_NORMAL(poly->normal.z) };
@@ -202,11 +266,12 @@ void Aim_DrawShotMarker(PlayState* play, Player* player) {
         }
     }
     if (marker && lands) {
-        // Raised off the surface a little, so it isn't lost in it.
+        // Raised off the surface a little, and drawn over everything, so nothing in the way hides it: not the
+        // enemy it's on, nor anything between the eyes and where the shot, leaving from the hand, will land.
         Vec3f up = Unit(normal);
         Vec3f at = { landing.x + up.x * 0.6f, landing.y + up.y * 0.6f, landing.z + up.z * 0.6f };
-        DrawRing(play, at, up, 7.0f, 2.0f, { 255, 210, 80, 210 });
-        DrawRing(play, at, up, 1.5f, 1.5f, { 255, 210, 80, 230 });
+        DrawRing(play, at, up, 7.0f, 2.0f, { 255, 210, 80, 210 }, true);
+        DrawRing(play, at, up, 1.5f, 1.5f, { 255, 210, 80, 230 }, true);
     }
 }
 

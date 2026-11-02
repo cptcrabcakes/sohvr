@@ -569,6 +569,62 @@ void PlaceForearm(Player* player, LinkHand hand, s32 handLimb, Vec3f* pos, Vec3s
     *rot = { 0, 0, 0 };
 }
 
+// In VR a blade's hitbox is the blade as it's drawn. The game reaches well past the tip (another 1200 units on top of
+// a length that's already longer than the blade) and 1000 units to each side, so that with a camera behind Link a
+// swing feels like it connects; in VR that hit things a meter beyond the blade. Lengths are where each
+// hand-holding-it model's vertices end along the blade (+X in the hand model), measured from the game's own models,
+// with 5% to spare; the band from low to high (Y) and halfWidth (Z) are as thick as the fist that holds it.
+struct BladeShape {
+    float length;
+    float low;
+    float high;
+    float halfWidth;
+};
+
+void FillBladePoints(const BladeShape& shape, Vec3f* tips, Vec3f* bases) {
+    float length = shape.length * 1.05f;
+    float middle = (shape.low + shape.high) * 0.5f;
+    // The game's pattern: a point down the middle, for the trail, then two quads that cross along the blade.
+    if (tips != nullptr) {
+        tips[0] = { length, middle, 0.0f };
+        tips[1] = { length, shape.low, shape.halfWidth };
+        tips[2] = { length, shape.high, -shape.halfWidth };
+    }
+    if (bases != nullptr) {
+        bases[0] = { 0.0f, middle, 0.0f };
+        bases[1] = { 0.0f, shape.high, -shape.halfWidth };
+        bases[2] = { 0.0f, shape.low, shape.halfWidth };
+    }
+}
+
+// Majora's Mask's blades: the Kokiri, Razor and Gilded Swords, the Great Fairy's Sword, a Deku stick (whose length is
+// the game's), and the Fierce Deity's sword.
+bool BladeShapeFor(Player* player, float gameLength, BladeShape& out) {
+    if (player->transformation == PLAYER_FORM_FIERCE_DEITY) {
+        out = { 5400.0f, 0.0f, 800.0f, 280.0f };
+        return true;
+    }
+    switch (Player_GetMeleeWeaponHeld(player)) {
+        case PLAYER_MELEEWEAPON_SWORD_KOKIRI:
+            out = { 1727.0f, 0.0f, 500.0f, 250.0f };
+            return true;
+        case PLAYER_MELEEWEAPON_SWORD_RAZOR:
+            out = { 1902.0f, 0.0f, 500.0f, 250.0f };
+            return true;
+        case PLAYER_MELEEWEAPON_SWORD_GILDED:
+            out = { 3348.0f, 0.0f, 560.0f, 250.0f };
+            return true;
+        case PLAYER_MELEEWEAPON_SWORD_TWO_HANDED:
+            out = { 5498.0f, 0.0f, 700.0f, 250.0f };
+            return true;
+        case PLAYER_MELEEWEAPON_DEKU_STICK:
+            out = { gameLength, 0.0f, 500.0f, 250.0f };
+            return true;
+        default:
+            return false;
+    }
+}
+
 // Whether the game is swinging Link's weapon itself, in a spin attack, which carries it around him.
 bool GameSpinning(Player* player) {
     return player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0 &&
@@ -884,6 +940,15 @@ extern "C" bool Vr_LimbMirrored(Player* player, s32 limbIndex) {
     }
 }
 
+extern "C" bool Vr_BladePoints(Player* player, f32 gameLength, Vec3f* tips, Vec3f* bases) {
+    SohVr::BladeShape shape;
+    if (!IsVrPlayer(player) || !SohVr::BladeShapeFor(player, gameLength, shape)) {
+        return false;
+    }
+    SohVr::FillBladePoints(shape, tips, bases);
+    return true;
+}
+
 // A sword, the Fierce Deity's included, or a Deku stick in hand.
 extern "C" bool Vr_HoldsBlade(Player* player) {
     if (!IsVrPlayer(player)) {
@@ -1025,8 +1090,8 @@ u16 OcarinaStickNotes(const float stick[2]) {
 // In the world: A and B are A and B. Each trigger uses the item its hand chose from the ring, on that side's C button,
 // and X is C-down, where a chosen mask goes, to take it off or put it back on. Y opens the ring (see Items_OnFrame).
 // The left grip is R: the shield, or another form's guard. The right stick pushed up is C-up, for Tatl. With the
-// ocarina out X and Y play C-left and C-right, and the right stick its four C notes. The left stick click or menu
-// button is Start.
+// ocarina out X and Y play C-left and C-right, and the right stick its four C notes. The menu
+// button is Start (not the stick click, which got pressed by accident while walking).
 u16 WorldButtons() {
     const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
     const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
@@ -1057,13 +1122,13 @@ u16 WorldButtons() {
     }
     // Not while the left hand is at the face, where its grip is for masks.
     buttons |= (left.gripHeld && !menuOpen && !Items_HandAtFace(HAND_LEFT)) ? BTN_R : 0;
-    buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
+    buttons |= left.menu ? BTN_START : 0;
     return buttons;
 }
 
 // On the floating screen (the pause menu, title screen and file select) the controllers are a gamepad: A and B are
 // A and B, X and Y are C-left and C-right, the right stick's up and down are C-up and C-down, the left trigger is Z,
-// the right trigger R, and the left stick click or menu button is Start.
+// the right trigger R, and the menu button is Start.
 u16 ScreenButtons() {
     const ControllerState& left = Runtime::Get().GetController(HAND_LEFT);
     const ControllerState& right = Runtime::Get().GetController(HAND_RIGHT);
@@ -1077,7 +1142,7 @@ u16 ScreenButtons() {
     }
     buttons |= left.triggerHeld ? BTN_Z : 0;
     buttons |= right.triggerHeld ? BTN_R : 0;
-    buttons |= (left.menu || left.stickClick) ? BTN_START : 0;
+    buttons |= left.menu ? BTN_START : 0;
     return buttons;
 }
 

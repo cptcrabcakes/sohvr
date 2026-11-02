@@ -67,11 +67,28 @@ void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList, Vec3f* po
 bool Vr_LimbMirrored(Player* player, s32 limbIndex);
 // Whether Link holds a sword or hammer in hand, so its hitbox follows the controller even outside attacks.
 bool Vr_HoldsBlade(Player* player);
+// In VR, the blade in Link's hand as hit points in the hand model's space, sized to the blade as it's drawn instead of
+// the game's longer, wider reach: its three tips and three bases, either of which may be NULL. gameLength is the
+// game's own length for it, which a Deku stick keeps. False outside VR, or without a blade.
+bool Vr_BladePoints(Player* player, f32 gameLength, Vec3f* tips, Vec3f* bases);
 // Whether a swing of the held blade is fast enough to hit. Called once per tick with the blade tip's position.
 // Sets the blade's damage to a normal slash when it is.
 bool Vr_SwordSwing(Player* player, Vec3f* tip);
 // Whether the shield in Link's hand should block on its own, wherever the player holds it.
 bool Vr_HoldsShield(Player* player);
+// In VR the shield comes out and goes away on its own, apart from the sword: 1 while it's out, 0 while it's away
+// (its hand is then empty), or -1 when VR doesn't decide (see Player_SetModels).
+s32 Vr_ShieldOut(Player* player);
+// How many times further than usual things stay drawn: the VR Draw Distance setting while the world is shown in VR,
+// otherwise 1.
+s32 Vr_DrawDistance(void);
+// Called with every matrix the game writes, so those drawn for Link's hands can follow the controllers every frame.
+void Vr_OnMtxWritten(Mtx* mtx);
+// Blacks out the view while Link falls through the ground into a grotto, as the game's fades are drawn. Called with
+// the fades' display list, in the part of the overlay that's drawn in the eyes.
+void Vr_DrawBlackout(Gfx** gfxP);
+// In z_player_lib.c: sets the player's hand models again, for Vr_ShieldOut's change.
+void Player_RefreshModelsVr(Player* player);
 // Passes the game's controller rumble on to the VR controllers.
 void Vr_Rumble(bool on);
 // Whether the sword hand's grip just asked to charge a spin attack (see UpdateSpinAttack). Called from the player's

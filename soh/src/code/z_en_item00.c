@@ -729,7 +729,8 @@ void func_8001E5C8(EnItem00* this, PlayState* play) {
         }
     }
 
-    if (this->unk_15A == 0) {
+    // In VR the player's eyes are Link's, so a collected drop vanishes instead of bouncing in front of them.
+    if ((this->unk_15A == 0) || ((this->getItemId == GI_NONE) && Vr_IsWorldStereo())) {
         Actor_Kill(&this->actor);
         return;
     }

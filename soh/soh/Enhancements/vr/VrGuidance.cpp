@@ -76,8 +76,9 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
                                     "and the right stick%w. %yB%w puts it away." } },
     { 0x004B, { ITEM_SWORD_KNIFE, "You got the %rGiant's Knife%w!^%yHold it with both hands%w and swing! It's so "
                                   "long, you can't use it with a shield." } },
-    { 0x004C, { ITEM_SHIELD_DEKU, "You got a %rDeku Shield%w!^Change shields from the %yGear%w group of the %yitem "
-                                  "wheel (Y)%w. %yHold it where the attack is coming from%w to block it." } },
+    { 0x004C, { ITEM_SHIELD_DEKU, "You got a %rDeku Shield%w!^%yReach over your other shoulder and squeeze the "
+                                  "grip%w to take it out or put it away. %yHold it where the attack is coming from%w "
+                                  "to block it." } },
     { 0x004D, { ITEM_SHIELD_HYLIAN, "You got a %rHylian Shield%w!^Change shields from the %yGear%w group of the "
                                     "%yitem wheel (Y)%w. %yHold it up where the attack is coming from%w. As a child, "
                                     "crouch behind it." } },
@@ -89,7 +90,7 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
                                      "through your arms! %yGrab things with both hands%w and lift them up!" } },
     { 0x005D, { ITEM_BLUE_FIRE, "You put a %rBlue Fire%w into the bottle!^It's a cool flame. %yTip the bottle%w to "
                                 "pour it out." } },
-    { 0x0066, { ITEM_DUNGEON_MAP, "You found the %rDungeon Map%w!^Pause with %ythe left stick click%w, or the "
+    { 0x0066, { ITEM_DUNGEON_MAP, "You found the %rDungeon Map%w!^Pause with %ythe Menu button%w, or the "
                                   "%yship%w on the %yitem wheel (Y)%w, and look at the Map.^Blue chambers are places "
                                   "you have already visited. Your current location is the flashing room." } },
     { 0x0069, { ITEM_LETTER_ZELDA, "You received %rZelda's Letter%w!^Wow! This letter has Princess Zelda's autograph! "
@@ -109,8 +110,8 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
                                   "to drink it: five hearts a drink, two drinks a bottle." } },
     { 0x009A, { ITEM_WEIRD_EGG, "You got a %rWeird Egg%w!^Feels like there's something moving inside! Take it from "
                                 "the %yitem wheel (Y)%w and see what happens!" } },
-    { 0x00A4, { ITEM_SWORD_KOKIRI, "You got the %rKokiri Sword%w!^%yReach over your shoulder and squeeze the grip%w "
-                                   "to draw it, and swing! Do the same to put it away.^This is a hidden treasure of "
+    { 0x00A4, { ITEM_SWORD_KOKIRI, "You got the %rKokiri Sword%w!^%yReach over your sword hand's shoulder and squeeze "
+                                   "the grip%w to draw it, and swing! Do the same to put it away.^This is a hidden treasure of "
                                    "the Kokiri, but you can borrow it for a while. Be sure to practice with it!" } },
     { 0x00AD, { ITEM_DINS_FIRE, "You got %rDin's Fire%w!^Its fireball engulfs everything! Take it from the %yitem "
                                 "wheel (Y)%w and %yhold both triggers%w to cast it." } },
@@ -181,13 +182,13 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
     { 0x1037, { ITEM_NONE, "The icon on your right wrist is the Action Icon.^It shows what %yA%w will do right now. A "
                            "lot of what it shows, you can also do with your hands!" } },
     { 0x1039, { ITEM_NONE, "Your hearts, magic and rupees are on the back of your %yleft wrist%w.^If you want to see "
-                           "the map, pause with %ythe left stick click%w, or the %yship%w on the %yitem wheel (Y)%w, "
+                           "the map, pause with %ythe Menu button%w, or the %yship%w on the %yitem wheel (Y)%w, "
                            "and look at the Map." } },
     { 0x103A, { ITEM_NONE, "Everything you have is on the %yitem wheel (Y)%w: weapons, things to use, and in its "
                            "%yGear%w group, your swords, shields, tunics and boots.^Take something and it goes into "
-                           "the hand that took it.^To check your quest items or the map, pause with %ythe left stick "
-                           "click%w. Did you understand everything?" } },
-    { 0x103B, { ITEM_NONE, "Well, just remember this. If you want to save, pause with %ythe left stick click%w and "
+                           "the hand that took it.^To check your quest items or the map, pause with %ythe Menu "
+                           "button%w. Did you understand everything?" } },
+    { 0x103B, { ITEM_NONE, "Well, just remember this. If you want to save, pause with %ythe Menu button%w and "
                            "press %yB%w." } },
     { 0x103D, { ITEM_NONE, "This shop...It sells things you can get in the forest for free! Tee hee!^Do you know how "
                            "to use the Deku Shield? Tee hee!^Change shields from the %yGear%w group of the %yitem "

@@ -3103,10 +3103,17 @@ void func_80126AB4(Player* player, Vec3f** arg1) {
 
 void func_80126B8C(PlayState* play, Player* player) {
     Vec3f* sp1C;
+    Vec3f vrTips[3];
+    Vec3f vrBases[3];
 
     func_80126AB4(player, &sp1C);
     sPlayerVrBlade = Vr_HoldsBlade(player);
-    func_8012669C(play, player, sp1C, D_801C0970);
+    // In VR the hitbox is the blade as it's drawn (see Vr_BladePoints).
+    if (sPlayerVrBlade && Vr_BladePoints(player, D_801C0994[0].x, vrTips, vrBases)) {
+        func_8012669C(play, player, vrTips, vrBases);
+    } else {
+        func_8012669C(play, player, sp1C, D_801C0970);
+    }
     sPlayerVrBlade = false;
 }
 

@@ -12,7 +12,7 @@ Like Ship of Harkinian, this repository contains no copyrighted game assets. To 
 
 * Windows 10 or 11. VR uses the DirectX 11 renderer and isn't available on Linux or macOS.
 * A PC VR headset with an OpenXR runtime: SteamVR, Quest Link or Steam Link, Virtual Desktop, Pico Connect, Windows Mixed Reality, or a headset maker's own. It has been played on a Quest 3 through SteamVR and Quest Link; the others haven't been tried yet.
-* Motion controllers. The game has its controls laid out for Quest Touch (and the Quest Pro's and Quest 3's, which work as Touch), Valve Index, HTC Vive wands, Windows Mixed Reality, HP Reverb G2, Samsung Odyssey, Pico 4 and Vive Focus 3 controllers, and the most basic layout any runtime offers. On the Index, A and B are on both hands, and the left stick click pauses. On Vive wands, the trackpad is the stick, clicking it is A or X, and the menu button is B or Y; pause and recenter from the item wheel's System section. The log names the layout the runtime picked (`[VR] Left hand: ...`).
+* Motion controllers. The game has its controls laid out for Quest Touch (and the Quest Pro's and Quest 3's, which work as Touch), Valve Index, HTC Vive wands, Windows Mixed Reality, HP Reverb G2, Samsung Odyssey, Pico 4 and Vive Focus 3 controllers, and the most basic layout any runtime offers. On the Index, A and B are on both hands; it has no menu button, so pause from the item wheel's System section. On Vive wands, the trackpad is the stick, clicking it is A or X, and the menu button is B or Y; pause and recenter from the item wheel's System section. The log names the layout the runtime picked (`[VR] Left hand: ...`).
 * Everything listed under Windows in [BUILDING.md](BUILDING.md).
 
 ## Building
@@ -28,7 +28,7 @@ On first launch, give the game your ROM when it asks, the same as in regular Shi
 3. Under **Settings > Graphics**, set **Renderer API** to **DirectX 11**, then restart the game.
 4. Under **Settings > VR**, check **Enable VR**. The game appears in the headset within a few seconds; if no headset is found yet, it keeps checking.
 
-The other options on the VR page are below. Most of them can also be changed in the headset: press Y, open the System section (the ship) and pick VR Settings (the compass).
+The other options on the VR page are below. Most of them can also be changed in the headset: press Y, open the System section (the ship) and pick VR Settings (the compass). Its second page (More Settings) has the aim marker and path, picking up drops, whistling, climbing, running and swimming with your arms, nodding to answer, and the VR tutorials.
 
 | Option | What it does |
 | - | - |
@@ -39,12 +39,14 @@ The other options on the VR page are below. Most of them can also be changed in 
 | Pick Up Drops by Hand | Off (the default): you collect ammo and magic drops by walking into them, as in the game. On: you close a hand on them instead. |
 | Snap Turn | How far one flick of the right stick turns you; 0 turns smoothly. |
 | Movement Direction | Whether pushing the left stick forward moves you where you look or where your left hand points. |
-| Sword Hand | Link is left-handed. Choose Right to put the sword in your right hand instead. |
+| Sword Hand | Link is left-handed. Choose Right to put the sword in your right hand instead. It also decides which shoulder the sword is drawn from; the shield is drawn from the other one. |
+| Title Screen | How the title screen's cutscene is watched: from its own camera as it moves (kept above the ground), through the eyes of the Link riding in it, or on the floating screen, which is the calmest. |
+| Draw Distance | How much further than usual people, enemies and things stay drawn (1x to 5x, 3x by default), so they don't pop in as you look around. Far-away models always use their detailed versions too. |
 | Hand Fine Tuning | Small rotation adjustments for each hand model. Leave these at 0 unless the hands look misaligned. |
 
 ## Playing
 
-The title screen's cutscene plays around you in 3D, seen from its own camera as it moves; press A or Start to skip it. File select, the pause menu, shops, and rooms drawn on a fixed background (such as Link's house and the market) appear on a floating screen in front of you. There you play with the controller as a normal gamepad. Everywhere else you're in the world, cutscenes included: they play out around you, seen through Link's eyes, and your hands don't act on the game until they're over.
+The title screen's cutscene plays around you in 3D, seen from its own camera as it moves (or through Link's eyes, or on the floating screen: see Title Screen above); press A or Start to skip it. File select, the pause menu, shops, and rooms drawn on a fixed background (such as Link's house and the market) appear on a floating screen in front of you. There you play with the controller as a normal gamepad. Everywhere else you're in the world, cutscenes included: they play out around you, seen through Link's eyes, and your hands don't act on the game until they're over.
 
 ### In the world
 
@@ -55,14 +57,15 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Right stick left/right | Turn |
 | Right stick down | L; talks to Navi when she has something to say |
 | Right stick click | Recenter the view, or bring the floating screen back |
-| Left stick click or Menu button | Pause |
+| Menu button | Pause |
 | A | Talk, open, climb, roll; while carrying something, put it down or throw it |
 | B | Advance text, and put the ocarina away |
 | Y | Open or close the item menu, which also holds the pause menu and the VR settings |
 
 | To | Do this |
 | - | - |
-| Draw or put away the sword | Reach over your shoulder with your sword hand and squeeze the grip |
+| Draw or put away the sword | Reach over your sword hand's shoulder and squeeze the grip |
+| Take out or put away the shield | Reach over your other shoulder and squeeze the grip. The sword and shield come out separately, so you can hold just one. |
 | Attack | Swing the sword. A very hard swing hits as hard as a jump attack. A blade swung into a wall or the floor sparks and stops, which wears out the Deku stick and Biggoron's Sword as the game's own hits do, and the Megaton Hammer swung into the ground shakes it, which some switches answer to. |
 | Spin attack | Hold your sword hand's trigger to charge, and let go to spin: the sword sweeps around you. Or turn around for real, most of the way, with the sword held out. |
 | Block | Hold the shield where the attack is coming from |
@@ -78,17 +81,17 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Push or pull a block or Armos statue | Put both hands out on it and squeeze both grips; Link takes hold once he's up against it, so you can squeeze first and walk in. Then push the stick forward while looking at it to push it, or while looking away from it to pull it. Let go to let go of it. A works too. |
 | Throw | Swing the hand holding it and let go of the grip; a slow release sets it down. Carried in both hands, swing both and let go of both together to throw it with both. |
 | Open a door or chest | Close a hand on the door and push or pull, or on the chest's lid and lift; A works too |
-| Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go. The shot flies from your drawing hand through the bow or the slingshot's arms, so pull lower to aim higher, and the further you draw, the faster and further it flies. While it's drawn, a ring shows where it will land (Bow Landing Marker), and dots can show its path (Bow Flight Path). |
+| Fire the bow or slingshot | Pull the trigger of your other hand with that hand at the bow, draw back and let go. The shot flies from your drawing hand through the bow or the slingshot's arms, so pull lower to aim higher, and the further you draw, the faster and further it flies. While it's drawn, a ring shows where it will land (Bow Landing Marker), on top of everything and on the enemy it will hit, and dots can show its path (Bow Flight Path). |
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire. A laser shows where it would catch: green where it will hook, red where it would bounce off. |
 | Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
 | Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
-| See through the Lens of Truth | Take it from the wheel and hold it up to your eye; it's on, spending magic, only while it's there |
+| See through the Lens of Truth | Take it from the wheel and hold it up to your eye: everything you see is through it, so fake walls vanish and hidden things appear wherever you look. It's on, spending magic, only while it's there. Squeeze that hand's grip away from your face to put it away. |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |
 | Play the ocarina | Whistle, hum or sing its notes (D, F, A, B and the high D) into your headset's microphone, in any octave; how far off the note you are bends it, as the stick does. A note started again after a breath plays again. A and the right stick (up, down, left, right) play the notes too, and X and Y also play C-left and C-right. The right stick doesn't turn you while the ocarina is up. The microphone is only open while the ocarina is out; Whistle Ocarina Notes turns it off. |
 | Pause | Y, then the System section (the ship), then the map; or click the left stick |
-| Change VR settings | Y, then the System section (the ship), then the compass. Point at a row and pull the trigger: switches flip, and numbers go down on the row's left half and up on its right half, repeating while you hold. Y or Close puts it away. |
+| Change VR settings | Y, then the System section (the ship), then the compass. Point at a row and pull the trigger: switches flip, and numbers and choices go down on the row's left half and up on its right half, repeating while you hold. More Settings turns to the second page and Back returns. Y or Close puts it away. |
 
 The game's lessons on its buttons (what each item you find does, the Kokiri Forest signs and lessons, Navi's first words, the shields, the horse) say what to do in VR instead; VR Tutorials turns this off. On the floating screen they're the game's own.
 
@@ -115,7 +118,7 @@ The HUD is on your wrists: the three-day clock is a watch on your left wrist, wi
 | Left / right trigger | Use the item in that hand (C-left / C-right) |
 | X | Take off or put on your mask (C-down) |
 | Left grip | Shield, or another form's guard (R) |
-| Left stick click or Menu button | Pause |
+| Menu button | Pause |
 
 With the ocarina out, A, X, Y and the right stick (up, down, left, right) play its notes. In the pause menu, title screen and file select the controllers work like a gamepad: X and Y are C-left and C-right, the right stick up and down are C-up and C-down, the left trigger is Z and the right trigger is R.
 
@@ -127,7 +130,6 @@ This is a work in progress, and several parts of the game still use its original
 
 * Spells still play their usual casting scenes once cast.
 * The pause menu is the original one on the floating screen, navigated with the stick.
-* The Lens of Truth's view is drawn into each eye as the game draws it, which may look odd.
 * The ocarina plays wherever you hold it; it doesn't need to be at your mouth yet.
 * Some interactions haven't been tried everywhere in the game, so expect rough edges.
 

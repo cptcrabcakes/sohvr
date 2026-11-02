@@ -448,7 +448,7 @@ bool Runtime::Impl::CreateActions() {
 
     // Bindings for every kind of controller the PC runtimes know, so the same controls work whichever headset is
     // used: the runtime picks the profile that matches what's in the player's hands. What each one lacks is left
-    // out: the Index has no menu button (the left stick click pauses), and the Vive wands' trackpad is their stick
+    // out: the Index has no menu button (pause from the item wheel), and the Vive wands' trackpad is their stick
     // and their trackpad click A or X, with the menu button as B or Y; there, pausing and recentering are on the
     // item wheel and the VR settings. A profile the runtime refuses only loses that controller.
     struct Layout {
