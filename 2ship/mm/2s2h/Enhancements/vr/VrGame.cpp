@@ -23,6 +23,10 @@ extern PlayState* gPlayState;
 #define CVAR_VR_WORLD_SCALE CVAR_SETTING("VR.WorldScale")     // percent: higher makes the world look bigger
 #define CVAR_VR_SNAP_TURN CVAR_SETTING("VR.SnapTurn")         // degrees; 0 turns smoothly
 #define CVAR_VR_SEATED CVAR_SETTING("VR.Seated")
+// Link holds his sword in his left hand and his shield in his right; this puts the sword on the right controller.
+#define CVAR_VR_SWORD_IN_RIGHT_HAND CVAR_SETTING("VR.SwordInRightHand")
+// Fine turns (degrees) of each hand model on its controller, about the grip's X, Y and Z.
+#define CVAR_VR_HAND_TUNE(hand, axis) CVAR_SETTING("VR.Hand" hand ".Tune" axis)
 
 namespace SohVr {
 
@@ -59,6 +63,20 @@ constexpr float kHudDistance = 1.1f;
 constexpr float kHudDrop = 0.35f;
 constexpr float kHudWidth = 1.0f;
 constexpr float kHudFollowAngle = 0.9f;
+constexpr float kTicksPerSecond = 20.0f;
+// A blade is swung once its tip passes kSwingStartSpeed (meters a second) with the hand behind it passing
+// kSwingMinHandSpeed, and has kept that up for kSwingMinTravel meters. It stops below kSwingStopSpeed or when it turns
+// back, and then rests kSwingCooldownTicks. Swung at kHeavySwingSpeed or more, it hits like a jump attack.
+constexpr float kSwingStartSpeed = 2.5f;
+constexpr float kSwingMinHandSpeed = 1.2f;
+constexpr float kSwingMinTravel = 0.3f;
+constexpr float kSwingStopSpeed = 1.0f;
+constexpr float kHeavySwingSpeed = 7.0f;
+constexpr int kSwingCooldownTicks = 8;
+// A Goron's or Zora's punch lands once the fist moves at kPunchSpeed (meters a second), and hits hard at
+// kHeavyPunchSpeed.
+constexpr float kPunchSpeed = 2.5f;
+constexpr float kHeavyPunchSpeed = 5.0f;
 
 struct Vec3 {
     float x, y, z;
@@ -81,6 +99,65 @@ Vec3 RotateYaw(float yaw, Vec3 v) {
 
 float Dot(Vec3 a, Vec3 b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+void Multiply(const float a[4], const float b[4], float out[4]) {
+    float x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+    float y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+    float z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+    float w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+    out[0] = x;
+    out[1] = y;
+    out[2] = z;
+    out[3] = w;
+}
+
+void AxisAngle(float x, float y, float z, float degrees, float out[4]) {
+    float half = DEG_TO_RAD(degrees) * 0.5f;
+    float s = sinf(half);
+    out[0] = x * s;
+    out[1] = y * s;
+    out[2] = z * s;
+    out[3] = cosf(half);
+}
+
+// Row-vector product a * b, the order the game's matrices compose in.
+void MultiplyRows(const MtxF& a, const MtxF& b, MtxF& out) {
+    MtxF result;
+    for (int i = 0; i < 4; i++) {
+        for (int j = 0; j < 4; j++) {
+            result.mf[i][j] = a.mf[i][0] * b.mf[0][j] + a.mf[i][1] * b.mf[1][j] + a.mf[i][2] * b.mf[2][j] +
+                              a.mf[i][3] * b.mf[3][j];
+        }
+    }
+    out = result;
+}
+
+// Link's hands; the left one holds his sword, the right one his shield, bow and hookshot, in every form.
+enum LinkHand { LINK_LEFT, LINK_RIGHT };
+
+// In the headset the grip's X and Y axes come out half a turn about Z from the frame the hands are written for, so
+// everything placed on a hand goes through this first. The same as in Ocarina of Time.
+constexpr float kGripFix[4] = { 0.0f, 0.0f, 1.0f, 0.0f };
+// Every form's hand models share Ocarina of Time's child Link's axes: the left hand's sword runs along +X out of the
+// thumb side, with the fist along +Y toward the knuckles, and the shield lies on the back of the right hand. That's
+// a quarter turn about Y onto the grip.
+constexpr float kHandAlignment[4] = { 0.0f, 0.7071068f, 0.0f, 0.7071068f };
+
+// Where the fist is in each form's hand model (model units), which goes on the controller's grip point. A Goron's
+// fists are much bigger and a Deku scrub's hands much smaller than Link's own. Estimates, not yet checked in the
+// headset.
+float HandFistReach(Player* player) {
+    switch (player->transformation) {
+        case PLAYER_FORM_GORON:
+            return 650.0f;
+        case PLAYER_FORM_DEKU:
+            return 300.0f;
+        case PLAYER_FORM_ZORA:
+            return 450.0f;
+        default:
+            return 400.0f;
+    }
 }
 
 // What one game tick contributes to rendering.
@@ -129,6 +206,21 @@ Gfx* sOverlayCutAt = nullptr;
 bool sOverlayCut = false;
 
 Pose sHudPose;
+
+// Each hand's grip position over the last few frames, for its speed.
+constexpr int kHandHistory = 5;
+float sHandHistory[HAND_COUNT][kHandHistory][3] = {};
+int sHandHistoryCount[HAND_COUNT] = {};
+
+// A blade swung by hand (see Vr_SwordSwing).
+bool sSwingActive = false;
+bool sSwingHit = false;
+int sSwingCooldown = 0;
+float sSwingTravel = 0.0f; // meters the tip has carried its speed so far, while a swing builds up
+
+// Each fist's punch (see Vr_FistSwing): the swept edge of its hitbox last tick, and whether it has landed.
+WeaponInfo sFist[2] = {};
+bool sFistHit[2] = {};
 
 bool SessionRunning() {
     return Runtime::Get().IsSessionRunning();
@@ -308,6 +400,139 @@ Pose PanelInFront(float distance, float drop) {
     return out;
 }
 
+void RecordHands() {
+    for (int hand = 0; hand < HAND_COUNT; hand++) {
+        const Pose& grip = Runtime::Get().GetController(static_cast<Hand>(hand)).gripPose;
+        if (!grip.valid) {
+            sHandHistoryCount[hand] = 0;
+            continue;
+        }
+        memmove(sHandHistory[hand][1], sHandHistory[hand][0], sizeof(float) * 3 * (kHandHistory - 1));
+        memcpy(sHandHistory[hand][0], grip.position, sizeof(float) * 3);
+        sHandHistoryCount[hand] = std::min(sHandHistoryCount[hand] + 1, kHandHistory);
+    }
+}
+
+// How fast a hand is moving in the play space (meters per second), leaving out Link's own movement.
+float HandSpeed(Hand hand) {
+    uint32_t refresh = Runtime::Get().GetRefreshRate();
+    int count = sHandHistoryCount[hand];
+    if (refresh == 0 || count < 2) {
+        return 0.0f;
+    }
+    const float* newest = sHandHistory[hand][0];
+    const float* oldest = sHandHistory[hand][count - 1];
+    Vec3 moved = { newest[0] - oldest[0], newest[1] - oldest[1], newest[2] - oldest[2] };
+    return sqrtf(Dot(moved, moved)) * refresh / static_cast<float>(count - 1);
+}
+
+Hand ControllerFor(LinkHand hand) {
+    bool swapped = CVarGetInteger(CVAR_VR_SWORD_IN_RIGHT_HAND, 0) != 0;
+    return ((hand == LINK_LEFT) != swapped) ? HAND_LEFT : HAND_RIGHT;
+}
+
+// Whether one of Link's hands is on the other side's controller, so it's drawn mirrored to look like that side's
+// hand.
+bool HandMirrored(LinkHand hand) {
+    return (ControllerFor(hand) == HAND_LEFT) != (hand == LINK_LEFT);
+}
+
+// How a hand model sits on its controller: the alignment, then any fine tuning, turned about the grip's X, then Y,
+// then Z axis.
+void HandAlignment(LinkHand hand, float out[4]) {
+    int degrees[3];
+    if (hand == LINK_LEFT) {
+        degrees[0] = CVarGetInteger(CVAR_VR_HAND_TUNE("L", "X"), 0);
+        degrees[1] = CVarGetInteger(CVAR_VR_HAND_TUNE("L", "Y"), 0);
+        degrees[2] = CVarGetInteger(CVAR_VR_HAND_TUNE("L", "Z"), 0);
+    } else {
+        degrees[0] = CVarGetInteger(CVAR_VR_HAND_TUNE("R", "X"), 0);
+        degrees[1] = CVarGetInteger(CVAR_VR_HAND_TUNE("R", "Y"), 0);
+        degrees[2] = CVarGetInteger(CVAR_VR_HAND_TUNE("R", "Z"), 0);
+    }
+    float rx[4], ry[4], rz[4], zy[4], tune[4];
+    AxisAngle(1.0f, 0.0f, 0.0f, static_cast<float>(degrees[0]), rx);
+    AxisAngle(0.0f, 1.0f, 0.0f, static_cast<float>(degrees[1]), ry);
+    AxisAngle(0.0f, 0.0f, 1.0f, static_cast<float>(degrees[2]), rz);
+    Multiply(rz, ry, zy);
+    Multiply(zy, rx, tune);
+    float tuned[4];
+    Multiply(kGripFix, tune, tuned);
+    Multiply(tuned, kHandAlignment, out);
+}
+
+// Where one of Link's hand models goes in the world: its fist on the controller, scaled like the rest of him.
+bool HandMatrix(Player* player, LinkHand hand, MtxF& out) {
+    const Pose& grip = Runtime::Get().GetController(ControllerFor(hand)).gripPose;
+    if (!grip.valid) {
+        return false;
+    }
+    float playSpaceYaw[4] = { 0.0f, sinf(sYaw * 0.5f), 0.0f, cosf(sYaw * 0.5f) };
+    float gripWorld[4], alignment[4], handWorld[4];
+    Multiply(playSpaceYaw, grip.orientation, gripWorld);
+    HandAlignment(hand, alignment);
+    Multiply(gripWorld, alignment, handWorld);
+
+    // The model's origin is the wrist; put its fist on the controller's grip point instead.
+    float scale = player->actor.scale.x;
+    Vec3 gripPoint = ToWorld(grip.position, sBuild.anchor, sBuild.unitsPerMeter);
+    Vec3 fist = Rotate(handWorld, { 0.0f, HandFistReach(player) * scale, 0.0f });
+    Vec3 origin = { gripPoint.x - fist.x, gripPoint.y - fist.y, gripPoint.z - fist.z };
+
+    Vec3 axes[3] = { Rotate(handWorld, { 1.0f, 0.0f, 0.0f }), Rotate(handWorld, { 0.0f, 1.0f, 0.0f }),
+                     Rotate(handWorld, { 0.0f, 0.0f, 1.0f }) };
+    // A hand on the other side's controller is mirrored across its palm: the model's Z is the grip's X, the palm's
+    // normal, which faces the other way in the other hand. The blade along X and the fist along Y stay put.
+    if (HandMirrored(hand)) {
+        axes[2] = { -axes[2].x, -axes[2].y, -axes[2].z };
+    }
+    for (int i = 0; i < 3; i++) {
+        out.mf[i][0] = axes[i].x * scale;
+        out.mf[i][1] = axes[i].y * scale;
+        out.mf[i][2] = axes[i].z * scale;
+        out.mf[i][3] = 0.0f;
+    }
+    out.mf[3][0] = origin.x;
+    out.mf[3][1] = origin.y;
+    out.mf[3][2] = origin.z;
+    out.mf[3][3] = 1.0f;
+    return true;
+}
+
+// Poses a forearm so that its hand, drawn next with its usual offset from the forearm, lands on the controller.
+// Moving the forearm rather than the hand keeps the wrist vertices, which are skinned to the forearm, attached.
+void PlaceForearm(Player* player, LinkHand hand, s32 handLimb, Vec3f* pos, Vec3s* rot) {
+    MtxF handTarget;
+    if (!HandMatrix(player, hand, handTarget)) {
+        return;
+    }
+    LodLimb* limb = (LodLimb*)Lib_SegmentedToVirtual(((void**)player->skelAnime.skeleton)[handLimb - 1]);
+    Vec3f handPos = { (f32)limb->jointPos.x, (f32)limb->jointPos.y, (f32)limb->jointPos.z };
+    Vec3s handRot = player->skelAnime.jointTable[handLimb];
+
+    MtxF identity, local, localInverse, forearm;
+    SkinMatrix_Clear(&identity);
+    Matrix_Push();
+    Matrix_Put(&identity);
+    Matrix_TranslateRotateZYX(&handPos, &handRot);
+    Matrix_Get(&local);
+    Matrix_Pop();
+    if (SkinMatrix_Invert(&local, &localInverse) != 0) {
+        return;
+    }
+    // hand = local * forearm, so forearm = local^-1 * hand.
+    MultiplyRows(localInverse, handTarget, forearm);
+    Vr_PutWorldMatrix(&forearm);
+    *pos = { 0.0f, 0.0f, 0.0f };
+    *rot = { 0, 0, 0 };
+}
+
+// Whether the game is swinging Link's weapon itself, in a spin attack, which carries it around him.
+bool GameSpinning(Player* player) {
+    return player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0 &&
+           player->meleeWeaponAnimation >= PLAYER_MWA_SPIN_ATTACK_1H;
+}
+
 void RegisterVr() {
     // Nothing to register yet: the decomp calls in directly (see Vr.h).
 }
@@ -337,6 +562,7 @@ void Game_OnTickSubmitted() {
 void Game_OnFrame() {
     Runtime& runtime = Runtime::Get();
     const ControllerState& right = runtime.GetController(HAND_RIGHT);
+    RecordHands();
 
     // Clicking the right stick recenters.
     if (right.stickClick && !sRecenterLatched) {
@@ -483,8 +709,192 @@ extern "C" bool Vr_GetInputDirYaw(s16* yaw) {
     return true;
 }
 
-extern "C" bool Vr_HidesLink(Player* player) {
+static bool IsVrPlayer(Player* player) {
     return Vr_IsWorldStereo() && gPlayState != nullptr && player == GET_PLAYER(gPlayState);
+}
+
+// Curled up, a Goron is a ball around the eyes, so none of him is drawn.
+extern "C" bool Vr_HidesLink(Player* player) {
+    return IsVrPlayer(player) && ((player->stateFlags3 & PLAYER_STATE3_1000) ||
+                                  (player->transformation == PLAYER_FORM_GORON &&
+                                   (player->stateFlags1 & PLAYER_STATE1_400000)));
+}
+
+extern "C" bool Vr_DrawsOnlyHands(Player* player) {
+    return IsVrPlayer(player);
+}
+
+extern "C" void Vr_PutWorldMatrix(MtxF* matrix) {
+    // Built from scratch and then applied, so frame interpolation blends it as it is (see the same function for
+    // Ocarina of Time).
+    Matrix_Translate(0.0f, 0.0f, 0.0f, MTXMODE_NEW);
+    Matrix_Mult(matrix, MTXMODE_APPLY);
+}
+
+extern "C" bool Vr_HandLimb(s32 limbIndex) {
+    return limbIndex == PLAYER_LIMB_LEFT_FOREARM || limbIndex == PLAYER_LIMB_LEFT_HAND ||
+           limbIndex == PLAYER_LIMB_RIGHT_FOREARM || limbIndex == PLAYER_LIMB_RIGHT_HAND;
+}
+
+extern "C" void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot) {
+    // During a spin attack the sword goes where the game's spin takes it, around the player, so it sweeps everything
+    // around them; the hands come back to the controllers after.
+    if (SohVr::GameSpinning(player)) {
+        if (!Vr_HandLimb(limbIndex)) {
+            *dList = nullptr;
+        }
+        return;
+    }
+    switch (limbIndex) {
+        case PLAYER_LIMB_LEFT_FOREARM:
+            SohVr::PlaceForearm(player, SohVr::LINK_LEFT, PLAYER_LIMB_LEFT_HAND, pos, rot);
+            *dList = nullptr;
+            break;
+        case PLAYER_LIMB_RIGHT_FOREARM:
+            SohVr::PlaceForearm(player, SohVr::LINK_RIGHT, PLAYER_LIMB_RIGHT_HAND, pos, rot);
+            *dList = nullptr;
+            break;
+        case PLAYER_LIMB_LEFT_HAND:
+        case PLAYER_LIMB_RIGHT_HAND:
+            break;
+        default:
+            *dList = nullptr;
+            break;
+    }
+}
+
+extern "C" bool Vr_LimbMirrored(Player* player, s32 limbIndex) {
+    if (!IsVrPlayer(player)) {
+        return false;
+    }
+    switch (limbIndex) {
+        case PLAYER_LIMB_LEFT_FOREARM:
+        case PLAYER_LIMB_LEFT_HAND:
+            return SohVr::HandMirrored(SohVr::LINK_LEFT);
+        case PLAYER_LIMB_RIGHT_FOREARM:
+        case PLAYER_LIMB_RIGHT_HAND:
+            return SohVr::HandMirrored(SohVr::LINK_RIGHT);
+        default:
+            return false;
+    }
+}
+
+// A sword, the Fierce Deity's included, or a Deku stick in hand.
+extern "C" bool Vr_HoldsBlade(Player* player) {
+    if (!IsVrPlayer(player)) {
+        return false;
+    }
+    PlayerMeleeWeapon weapon = Player_GetMeleeWeaponHeld(player);
+    return (weapon >= PLAYER_MELEEWEAPON_SWORD_KOKIRI && weapon <= PLAYER_MELEEWEAPON_DEKU_STICK) ||
+           player->transformation == PLAYER_FORM_FIERCE_DEITY;
+}
+
+extern "C" bool Vr_SwordSwing(Player* player, Vec3f* tip) {
+    static Vec3f sLastTip;
+    static bool sHasLastTip = false;
+    static SohVr::Vec3 sLastMove = {};
+    if (!IsVrPlayer(player)) {
+        sHasLastTip = false;
+        SohVr::sSwingActive = false;
+        return false;
+    }
+
+    // The tip's movement relative to Link, so running or stepping doesn't count as swinging.
+    Vec3f tipFromLink = { tip->x - player->actor.world.pos.x, tip->y - player->actor.world.pos.y,
+                          tip->z - player->actor.world.pos.z };
+    SohVr::Vec3 move = {};
+    if (sHasLastTip) {
+        move = { tipFromLink.x - sLastTip.x, tipFromLink.y - sLastTip.y, tipFromLink.z - sLastTip.z };
+    }
+    float travel = sqrtf(SohVr::Dot(move, move)) / SohVr::sBuild.unitsPerMeter; // meters this tick
+    float speed = travel * SohVr::kTicksPerSecond;                               // meters per second
+    bool turnedBack = SohVr::Dot(move, sLastMove) < 0.0f;
+    SohVr::Hand swordHand = SohVr::ControllerFor(SohVr::LINK_LEFT);
+    float handSpeed = SohVr::HandSpeed(swordHand);
+    sLastTip = tipFromLink;
+    sLastMove = move;
+    sHasLastTip = true;
+
+    // A hit from last tick ends the damage for the rest of the swing.
+    for (ColliderQuad& quad : player->meleeWeaponQuads) {
+        if (SohVr::sSwingActive && (quad.base.atFlags & AT_HIT)) {
+            SohVr::sSwingHit = true;
+            quad.base.atFlags &= ~AT_HIT;
+            SohVr::Runtime::Get().Vibrate(swordHand, 0.9f, 0.08f);
+        }
+    }
+    if (!SohVr::sSwingActive) {
+        if (SohVr::sSwingCooldown > 0) {
+            SohVr::sSwingCooldown--;
+            SohVr::sSwingTravel = 0.0f;
+        } else if (speed > SohVr::kSwingStartSpeed && handSpeed > SohVr::kSwingMinHandSpeed && !turnedBack) {
+            // Building up: the blade only becomes dangerous once it has carried its speed far enough.
+            SohVr::sSwingTravel += travel;
+            if (SohVr::sSwingTravel >= SohVr::kSwingMinTravel) {
+                SohVr::sSwingActive = true;
+                SohVr::sSwingHit = false;
+            }
+        } else {
+            SohVr::sSwingTravel = 0.0f;
+        }
+    } else if (speed < SohVr::kSwingStopSpeed || turnedBack) {
+        SohVr::sSwingActive = false;
+        SohVr::sSwingCooldown = SohVr::kSwingCooldownTicks;
+        SohVr::sSwingTravel = 0.0f;
+    }
+
+    bool live = SohVr::sSwingActive && !SohVr::sSwingHit;
+    // During the game's own attacks its damage stays as it set it. A very hard swing hits as hard as a jump attack.
+    if (live && player->meleeWeaponState == PLAYER_MELEE_WEAPON_STATE_0) {
+        Player_SetVrSwingDamage(player, speed >= SohVr::kHeavySwingSpeed);
+    }
+    return live;
+}
+
+// A Goron's or Zora's fist, punched by hand. Called from the hand's limb, with its matrix current.
+extern "C" void Vr_FistSwing(PlayState* play, Player* player, s32 hand) {
+    if (!IsVrPlayer(player) ||
+        (player->transformation != PLAYER_FORM_GORON && player->transformation != PLAYER_FORM_ZORA) ||
+        player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0 || SohVr::GameSpinning(player)) {
+        SohVr::sFist[hand].active = false;
+        return;
+    }
+    // Across the knuckles, so the punch sweeps a band as wide as the fist.
+    float reach = SohVr::HandFistReach(player);
+    Vec3f knuckles[2] = { { -reach * 0.4f, reach * 1.2f, 0.0f }, { reach * 0.4f, reach * 1.2f, 0.0f } };
+    Vec3f tip, base;
+    Matrix_MultVec3f(&knuckles[0], &base);
+    Matrix_MultVec3f(&knuckles[1], &tip);
+
+    SohVr::Hand controller = SohVr::ControllerFor(hand == 0 ? SohVr::LINK_LEFT : SohVr::LINK_RIGHT);
+    ColliderQuad* quad = &player->meleeWeaponQuads[hand];
+    if (quad->base.atFlags & AT_HIT) {
+        quad->base.atFlags &= ~AT_HIT;
+        SohVr::sFistHit[hand] = true;
+        SohVr::Runtime::Get().Vibrate(controller, 1.0f, 0.1f);
+    }
+    float speed = SohVr::HandSpeed(controller);
+    if (speed < SohVr::kPunchSpeed) {
+        // Let go of the last punch's hit once the fist has stopped.
+        SohVr::sFistHit[hand] = false;
+        func_80126440(play, NULL, &SohVr::sFist[hand], &tip, &base);
+        return;
+    }
+    if (SohVr::sFistHit[hand]) {
+        func_80126440(play, NULL, &SohVr::sFist[hand], &tip, &base);
+        return;
+    }
+    bool heavy = speed >= SohVr::kHeavyPunchSpeed;
+    bool goron = player->transformation == PLAYER_FORM_GORON;
+    quad->elem.atDmgInfo.dmgFlags = goron ? DMG_GORON_PUNCH : DMG_ZORA_PUNCH;
+    quad->elem.atDmgInfo.damage = goron ? (heavy ? 4 : 2) : (heavy ? 2 : 1);
+    quad->elem.atElemFlags = ATELEM_ON | ATELEM_NEAREST;
+    func_80126440(play, quad, &SohVr::sFist[hand], &tip, &base);
+}
+
+// The shield in Link's hand blocks wherever the hand holds it.
+extern "C" bool Vr_HoldsShield(Player* player) {
+    return IsVrPlayer(player) && player->rightHandType == PLAYER_MODELTYPE_RH_SHIELD;
 }
 
 // For now the controllers are a gamepad: the left stick walks where the head looks, A and B are A and B, X and Y are

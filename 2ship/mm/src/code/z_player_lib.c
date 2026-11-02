@@ -4,6 +4,7 @@
  */
 
 #include "global.h"
+#include "2s2h/Enhancements/vr/Vr.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
 
 #include "objects/gameplay_keep/gameplay_keep.h"
@@ -2821,7 +2822,8 @@ u8 sPlayerShieldColMaterials[PLAYER_SHIELD_MAX] = {
 };
 
 void Player_UpdateShieldCollider(PlayState* play, Player* player, ColliderQuad* collider, Vec3f quadSrc[4]) {
-    if (player->stateFlags1 & PLAYER_STATE1_400000) {
+    // In VR the shield blocks wherever the hand holds it.
+    if ((player->stateFlags1 & PLAYER_STATE1_400000) || Vr_HoldsShield(player)) {
         Vec3f quadDest[4];
 
         player->shieldQuad.base.colMaterial = sPlayerShieldColMaterials[player->currentShield];
@@ -2975,29 +2977,49 @@ Vec3f D_801C0B90[D_801F59B0_LEN] = {
     { 950.0f, -800.0f, -300.0f },
 };
 
+// Set while the blade in Link's hand is updated (see func_80126B8C) and, in VR, swung by hand.
+static s32 sPlayerVrBlade = false;
+
 void func_8012669C(PlayState* play, Player* player, Vec3f* arg2, Vec3f* arg3) {
     Vec3f sp3C;
     Vec3f sp30;
+    // In VR the blade is also live whenever it's swung fast enough by hand.
+    s32 vrSwing = false;
+
+    if (sPlayerVrBlade) {
+        Matrix_MultVec3f(&arg2[1], &sp3C);
+        vrSwing = Vr_SwordSwing(player, &sp3C);
+    }
 
     Matrix_MultVec3f(arg2, &sp3C);
     Matrix_MultVec3f(arg3, &sp30);
 
-    if (player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0) {
+    if ((player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0) || sPlayerVrBlade) {
         if (func_80126440(play, NULL, &player->meleeWeaponInfo[0], &sp3C, &sp30) &&
-            (player->transformation != PLAYER_FORM_GORON) && !(player->stateFlags1 & PLAYER_STATE1_400000)) {
+            (player->transformation != PLAYER_FORM_GORON) && !(player->stateFlags1 & PLAYER_STATE1_400000) &&
+            !Vr_IsWorldStereo()) {
             EffectBlure_AddVertex(Effect_GetByIndex(player->meleeWeaponEffectIndex[0]), &player->meleeWeaponInfo[0].tip,
                                   &player->meleeWeaponInfo[0].base);
         }
 
-        if ((player->meleeWeaponState >= PLAYER_MELEE_WEAPON_STATE_1) &&
-            ((player->meleeWeaponAnimation < PLAYER_MWA_SPIN_ATTACK_1H) ||
-             (player->stateFlags2 & PLAYER_STATE2_20000))) {
+        if (((player->meleeWeaponState >= PLAYER_MELEE_WEAPON_STATE_1) &&
+             ((player->meleeWeaponAnimation < PLAYER_MWA_SPIN_ATTACK_1H) ||
+              (player->stateFlags2 & PLAYER_STATE2_20000))) ||
+            vrSwing) {
             Matrix_MultVec3f(&arg2[1], &sp3C);
             Matrix_MultVec3f(&arg3[1], &sp30);
             func_80126440(play, &player->meleeWeaponQuads[0], &player->meleeWeaponInfo[1], &sp3C, &sp30);
             Matrix_MultVec3f(&arg2[2], &sp3C);
             Matrix_MultVec3f(&arg3[2], &sp30);
             func_80126440(play, &player->meleeWeaponQuads[1], &player->meleeWeaponInfo[2], &sp3C, &sp30);
+        } else if (player->meleeWeaponState == PLAYER_MELEE_WEAPON_STATE_0) {
+            // Keep the swept hitbox's trailing edge on the blade, so the next swing sweeps from where it really is.
+            Matrix_MultVec3f(&arg2[1], &sp3C);
+            Matrix_MultVec3f(&arg3[1], &sp30);
+            func_80126440(play, NULL, &player->meleeWeaponInfo[1], &sp3C, &sp30);
+            Matrix_MultVec3f(&arg2[2], &sp3C);
+            Matrix_MultVec3f(&arg3[2], &sp30);
+            func_80126440(play, NULL, &player->meleeWeaponInfo[2], &sp3C, &sp30);
         }
     } else {
         Math_Vec3f_Copy(&player->meleeWeaponInfo[0].tip, &sp3C);
@@ -3083,7 +3105,9 @@ void func_80126B8C(PlayState* play, Player* player) {
     Vec3f* sp1C;
 
     func_80126AB4(player, &sp1C);
+    sPlayerVrBlade = Vr_HoldsBlade(player);
     func_8012669C(play, player, sp1C, D_801C0970);
+    sPlayerVrBlade = false;
 }
 
 // Zora boomerangs (?)
@@ -3819,6 +3843,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
 
     if (limbIndex == PLAYER_LIMB_LEFT_HAND) {
         Math_Vec3f_Copy(&player->leftHandWorld.pos, sPlayerCurBodyPartPos);
+        Vr_FistSwing(play, player, 0);
 
         if ((*dList1 != NULL) && !func_801271B0(play, player, 0) && !func_80128640(play, player, *dList1) &&
             (BEN_ANIM_EQUAL(player->skelAnime.animation, gPlayerAnim_pg_punchA))) {
@@ -3862,7 +3887,8 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     2500.0f, // PLAYER_MELEEWEAPON_ZORA_BOOMERANG
                 };
 
-                if ((player->transformation == PLAYER_FORM_FIERCE_DEITY) ||
+                // In VR a blade in hand always has its hitbox placed, to be swung by hand.
+                if ((player->transformation == PLAYER_FORM_FIERCE_DEITY) || Vr_HoldsBlade(player) ||
                     ((player->transformation != PLAYER_FORM_ZORA) &&
                      ((player->itemAction == PLAYER_IA_DEKU_STICK) ||
                       ((player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0) &&
@@ -3883,6 +3909,8 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
     } else if (limbIndex == PLAYER_LIMB_RIGHT_HAND) {
         Actor* heldActor = player->heldActor;
         s32 pad;
+
+        Vr_FistSwing(play, player, 1);
 
         if (*dList1 != NULL) {
             if (player->rightHandType == PLAYER_MODELTYPE_RH_BOW) {

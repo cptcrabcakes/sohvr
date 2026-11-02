@@ -5737,6 +5737,13 @@ PlayerMeleeWeaponAnimation func_808335F4(Player* this) {
     return meleeWeaponAnim;
 }
 
+void func_8083375C(Player* this, PlayerMeleeWeaponAnimation meleeWeaponAnim);
+
+// VR: a blade swung by hand hits as a slash, or as hard as a jump attack when swung hard.
+void Player_SetVrSwingDamage(Player* this, s32 strong) {
+    func_8083375C(this, strong ? PLAYER_MWA_JUMPSLASH_FINISH : PLAYER_MWA_FORWARD_SLASH_1H);
+}
+
 void func_80833728(Player* this, s32 index, u32 dmgFlags, s32 damage) {
     this->meleeWeaponQuads[index].elem.atDmgInfo.dmgFlags = dmgFlags;
     this->meleeWeaponQuads[index].elem.atDmgInfo.damage = damage;
@@ -13175,18 +13182,81 @@ skipUpdate:
     MREG(55) = this->actor.world.rot.y;
 }
 
+static OverrideLimbDrawFlex sVrBaseOverrideLimbDraw;
+static s32 sVrWorldMirrored; // the Mirrored World option already inverts culling for the whole world
+
+// Inverts the renderer's culling or puts it back, the same way the Mirrored World option does.
+static void Player_SetCullingInvertedVr(PlayState* play, s32 inverted) {
+    OPEN_DISPS(play->state.gfxCtx);
+    if (inverted) {
+        gSPSetExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+        gSPSetExtraGeometryMode(POLY_XLU_DISP++, G_EX_INVERT_CULLING);
+    } else {
+        gSPClearExtraGeometryMode(POLY_OPA_DISP++, G_EX_INVERT_CULLING);
+        gSPClearExtraGeometryMode(POLY_XLU_DISP++, G_EX_INVERT_CULLING);
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// In VR the camera is inside Link's head, so only his hands are drawn, on the player's controllers. The rest of
+// the skeleton is still posed, since the sword and shield hitboxes are placed from it.
+static s32 Player_OverrideLimbDrawVr(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot,
+                                     Actor* thisx) {
+    s32 skip = sVrBaseOverrideLimbDraw(play, limbIndex, dList, pos, rot, thisx);
+
+    Vr_OverridePlayerLimb((Player*)thisx, limbIndex, dList, pos, rot);
+
+    // A mirrored hand's faces are turned inside out, so its culling is inverted, until the next limb sets it back.
+    Player_SetCullingInvertedVr(play, Vr_LimbMirrored((Player*)thisx, limbIndex) != sVrWorldMirrored);
+    return skip;
+}
+
+// What the other limbs draw on themselves, such as a mask on the head, a Deku scrub's pipes or a Goron's drums, is
+// taken back out too. What the hands and forearms hold, such as the sword, shield, bow string and Zora fins, stays.
+static void Player_PostLimbDrawVr(PlayState* play, s32 limbIndex, Gfx** dList1, Gfx** dList2, Vec3s* rot,
+                                  Actor* thisx) {
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx* opa = gfxCtx->polyOpa.p;
+    Gfx* xlu = gfxCtx->polyXlu.p;
+
+    Player_PostLimbDrawGameplay(play, limbIndex, dList1, dList2, rot, thisx);
+    if (!Vr_HandLimb(limbIndex)) {
+        gfxCtx->polyOpa.p = opa;
+        gfxCtx->polyXlu.p = xlu;
+    }
+}
+
 void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
                          OverrideLimbDrawFlex overrideLimbDraw) {
+    PostLimbDrawFlex postLimbDraw = Player_PostLimbDrawGameplay;
+
+    // Other actors draw with this too, so only the real player gets VR hands. First person and crawling would swap
+    // in first-person arms or hide the hands, which in VR stay as they are.
+    if (Vr_DrawsOnlyHands(this)) {
+        sVrBaseOverrideLimbDraw = ((overrideLimbDraw == Player_OverrideLimbDrawGameplayFirstPerson) ||
+                                   (overrideLimbDraw == Player_OverrideLimbDrawGameplayCrawling))
+                                      ? Player_OverrideLimbDrawGameplayDefault
+                                      : overrideLimbDraw;
+        overrideLimbDraw = Player_OverrideLimbDrawVr;
+        postLimbDraw = Player_PostLimbDrawVr;
+        sVrWorldMirrored = (R_PAUSE_BG_PRERENDER_STATE <= PAUSE_BG_PRERENDER_SETUP) &&
+                           CVarGetInteger("gModes.MirroredWorld.State", 0);
+    }
+
     OPEN_DISPS(play->state.gfxCtx);
 
     gSPSegment(POLY_OPA_DISP++, 0x0C, cullDList);
     gSPSegment(POLY_XLU_DISP++, 0x0C, cullDList);
 
     Player_DrawImpl(play, this->skelAnime.skeleton, this->skelAnime.jointTable, this->skelAnime.dListCount, lod,
-                    this->transformation, 0, this->actor.shape.face, overrideLimbDraw, Player_PostLimbDrawGameplay,
-                    &this->actor);
+                    this->transformation, 0, this->actor.shape.face, overrideLimbDraw, postLimbDraw, &this->actor);
 
     CLOSE_DISPS(play->state.gfxCtx);
+
+    // A mirrored VR hand may have been the last limb to set the culling.
+    if (overrideLimbDraw == Player_OverrideLimbDrawVr) {
+        Player_SetCullingInvertedVr(play, sVrWorldMirrored);
+    }
 }
 
 void func_80846460(Player* this) {
@@ -13277,8 +13347,9 @@ Gfx* D_8085D574[] = {
 Color_RGB8 D_8085D580 = { 255, 255, 255 };
 Color_RGB8 D_8085D584 = { 80, 80, 200 };
 
-// In VR the player sees from inside Link: his draw still runs, so where his hands, sword and body are stays up to
-// date, but what it drew is taken back out.
+// In VR the player sees from inside Link, and only his hands are drawn (see Player_DrawGameplay). Curled up as a
+// Goron he's a ball around the eyes, so his draw still runs, which keeps where his body is up to date, but what it
+// drew is taken back out.
 static void Player_DrawVanilla(Actor* thisx, PlayState* play);
 
 void Player_Draw(Actor* thisx, PlayState* play) {

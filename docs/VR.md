@@ -96,7 +96,11 @@ The hearts, magic, rupees and keys are on the back of your left wrist, and the A
 
 ## Majora's Mask (early)
 
-`2ship/` holds Majora's Mask: 2Ship2Harkinian with the same VR core (`vr/core/`). So far it shows the world in stereo from Link's eyes, sized to whichever form he's in (towering as a Deku Scrub, small as the Fierce Deity), with the HUD and text on a panel ahead of you. The controllers work as a gamepad for now:
+`2ship/` holds Majora's Mask: 2Ship2Harkinian with the same VR core (`vr/core/`). So far it shows the world in stereo from Link's eyes, sized to whichever form he's in (towering as a Deku Scrub, small as the Fierce Deity), with the HUD and text on a panel ahead of you.
+
+Link's hands are on your controllers in every form. Swing the sword (or the Fierce Deity's, or a Deku stick) to hit with it, and swing harder to hit as hard as a jump attack. As a Goron or a Zora, punch. The shield blocks wherever you hold it. Link is left-handed, so his sword is on your left controller; **Sword in Right Hand** under Settings > VR swaps them.
+
+The buttons still work like a gamepad for now:
 
 | Control | What it does |
 | - | - |

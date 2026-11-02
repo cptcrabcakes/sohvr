@@ -693,6 +693,10 @@ void BenMenu::AddSettings() {
         .CVar("gSettings.VR.SnapTurn")
         .Options(IntSliderOptions().Min(0).Max(90).DefaultValue(30).Tooltip(
             "How far one flick of the right stick turns you. 0 turns smoothly instead."));
+    AddWidget(path, "Sword in Right Hand", WIDGET_CVAR_CHECKBOX)
+        .CVar("gSettings.VR.SwordInRightHand")
+        .Options(CheckboxOptions().Tooltip("Link is left-handed: his sword goes on your left controller and his "
+                                           "shield on your right. This swaps them."));
 
     path.sidebarName = "Controls";
     AddSidebarEntry("Settings", "Controls", 1);

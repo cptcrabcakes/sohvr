@@ -27,8 +27,32 @@ void Vr_OnSkyboxDrawn(Mtx* mtx, MtxF* matrix);
 void Vr_OverridePads(OSContPad* pads);
 // In the world, the stick moves Link relative to where the head looks: the yaw to use. False outside VR.
 bool Vr_GetInputDirYaw(s16* yaw);
-// Whether Link is seen from inside, so what his draw drew is taken back out (see Player_Draw).
+// Whether none of Link is drawn, as when a Goron curls up around the eyes (see Player_Draw).
 bool Vr_HidesLink(Player* player);
+// Whether only Link's hands are drawn, on the controllers, as they are while the player is inside him. The rest of
+// his skeleton is still posed, since his weapons' and shield's hitboxes are placed from it.
+bool Vr_DrawsOnlyHands(Player* player);
+// Whether a limb is one of the forearms or hands, which stay drawn.
+bool Vr_HandLimb(s32 limbIndex);
+// After the game's own limb override: puts the forearms where the hands land on the controllers and hides every
+// other limb.
+void Vr_OverridePlayerLimb(Player* player, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s* rot);
+// Whether a limb is a hand drawn on the other side's controller, mirrored, so its culling is inverted.
+bool Vr_LimbMirrored(Player* player, s32 limbIndex);
+// Puts a matrix already in world space on the matrix stack, in a way frame interpolation blends correctly.
+void Vr_PutWorldMatrix(MtxF* matrix);
+// Whether Link holds a blade (any sword, or a Deku stick) whose hitbox follows the hand.
+bool Vr_HoldsBlade(Player* player);
+// Whether the blade, whose tip is at tip this tick, is swung by hand fast enough to hit. Sets its damage if so.
+bool Vr_SwordSwing(Player* player, Vec3f* tip);
+// A Goron's or Zora's punch thrown by hand: places that fist's hitbox (hand 0 is the left) while it's moving fast.
+// Called from the hand's limb, with its matrix current.
+void Vr_FistSwing(PlayState* play, Player* player, s32 hand);
+// Whether the shield in Link's hand blocks, wherever it's held.
+bool Vr_HoldsShield(Player* player);
+
+// In z_player.c: sets the sword's damage for a swing by hand, as a slash, or a jump attack when strong.
+void Player_SetVrSwingDamage(Player* player, s32 strong);
 
 #ifdef __cplusplus
 }
