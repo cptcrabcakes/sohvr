@@ -574,6 +574,16 @@ void SohMenu::AddMenuSettings() {
         .Options(CheckboxOptions().DefaultValue(true).Tooltip(
             "On ladders, vines and climbable walls, close a hand to hold on and pull to climb, hand over hand. "
             "Hanging from a ledge, pull up to climb onto it or let go to drop. The stick climbs too."));
+    AddWidget(path, "Bow Landing Marker", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.ShotMarker"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "While the bow or slingshot is drawn, a ring shows where the shot will land."));
+    AddWidget(path, "Bow Flight Path", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.ShotPath"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "While the bow or slingshot is drawn, dots show the path the shot will take."));
     AddWidget(path, "Snap Turn: %d degrees", WIDGET_CVAR_SLIDER_INT)
         .CVar(CVAR_SETTING("VR.SnapTurn"))
         .RaceDisable(false)

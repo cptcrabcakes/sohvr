@@ -11,6 +11,7 @@
 #include <vector>
 
 union Gfx;
+struct Player;
 
 namespace SohVr {
 
@@ -55,5 +56,10 @@ void Game_PressStart();
 // A pose standing upright in front of where the player looks, the distance ahead and the drop below eye level
 // (meters), facing back at them.
 Pose Game_PanelInFront(float distance, float drop);
+// Whether the bow or slingshot's string is being drawn.
+bool Game_DrawingShot();
+// Where a shot from the bow or slingshot in hand would leave, which way it would go, and how hard (the share of
+// its full speed, from how far it's drawn), as Vr_AimProjectile launches it. False for anything else.
+bool Game_ShotAim(Player* player, Vec3f* origin, Vec3f* direction, float* power);
 
 } // namespace SohVr

@@ -241,6 +241,7 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
 
         if (this->actor.params >= ARROW_SEED) {
             Actor_SetProjectileSpeed(&this->actor, 80.0f);
+            Vr_ScaleShotSpeed(&this->actor);
             this->timer = 15;
             this->actor.shape.rot.x = this->actor.shape.rot.y = this->actor.shape.rot.z = 0;
             // A nut thrown by hand in VR flies in an arc at the hand's speed, so it needs longer to land.
@@ -249,6 +250,8 @@ void EnArrow_Shoot(EnArrow* this, PlayState* play) {
             }
         } else {
             Actor_SetProjectileSpeed(&this->actor, 150.0f);
+            // In VR, how hard the string was drawn sets how fast it flies.
+            Vr_ScaleShotSpeed(&this->actor);
             this->timer = 12;
         }
     }

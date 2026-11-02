@@ -1753,10 +1753,9 @@ void Player_DrawHookshotReticle(PlayState* play, Player* this, f32 hookshotRange
     }
 }
 
-// In VR the sight dot goes out from the tip of the hookshot in hand, the way it points, and is drawn in the world:
-// the overlay Player_DrawHookshotReticle draws into is cut from the eyes' view for the wrist panels. The dot's model
-// turns itself with the billboard on segment 1, so that's pointed at a rotation facing the eye for it and put back
-// after. It keeps about the same size in view, as the game's does.
+// In VR the sight goes out from the tip of the hookshot in hand, the way it points, and is drawn in the world (the
+// overlay Player_DrawHookshotReticle draws into is cut from the eyes' view for the wrist panels): a laser to where it
+// would catch, and a ring there, green if it will hook (see Vr_DrawHookshotSight).
 static void Player_DrawHookshotReticleVr(PlayState* play, Player* this) {
     Vec3f tip;
     Vec3f direction;
@@ -1773,26 +1772,9 @@ static void Player_DrawHookshotReticleVr(PlayState* play, Player* this) {
     end.x = tip.x + direction.x * range;
     end.y = tip.y + direction.y * range;
     end.z = tip.z + direction.z * range;
-    if (BgCheck_AnyLineTest3(&play->colCtx, &tip, &end, &hit, &colPoly, 1, 1, 1, 1, &bgId)) {
-        f32 distance = Math_Vec3f_DistXYZ(&hit, &play->view.eye);
-        f32 scale = (distance < 200.0f) ? 0.08f : (distance / 200.0f) * 0.08f;
-
-        OPEN_DISPS(play->state.gfxCtx);
-
-        POLY_XLU_DISP = Gfx_SetupDL(POLY_XLU_DISP, 0x07);
-        Matrix_Push();
-        Matrix_Translate(hit.x, hit.y, hit.z, MTXMODE_NEW);
-        Matrix_Scale(scale, scale, scale, MTXMODE_APPLY);
-        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-        if (GameInteractor_Should(VB_TARGETABLE_HOOKSHOT_RETICLE, true, colPoly, bgId)) {
-            gSPSegment(POLY_XLU_DISP++, 0x01, Vr_FacingBillboard(play, &hit));
-            gSPSegment(POLY_XLU_DISP++, 0x06, play->objectCtx.status[this->actor.objBankIndex].segment);
-            gSPDisplayList(POLY_XLU_DISP++, gLinkAdultHookshotReticleDL);
-            gSPSegment(POLY_XLU_DISP++, 0x01, play->billboardMtx);
-        }
-        Matrix_Pop();
-
-        CLOSE_DISPS(play->state.gfxCtx);
+    if (BgCheck_AnyLineTest3(&play->colCtx, &tip, &end, &hit, &colPoly, 1, 1, 1, 1, &bgId) &&
+        GameInteractor_Should(VB_TARGETABLE_HOOKSHOT_RETICLE, true, colPoly, bgId)) {
+        Vr_DrawHookshotSight(play, &tip, &hit, SurfaceType_IsHookshotSurface(&play->colCtx, colPoly, bgId));
     }
 }
 

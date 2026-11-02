@@ -157,6 +157,10 @@ bool Vr_TakeThrowRequest(void);
 bool Vr_TakeBoomerangThrow(Vec3f* from);
 // Gives a thrown actor the speed and direction the hand had when the grip let go. Leaves button throws alone.
 void Vr_ThrowWithHand(Player* player, Actor* thrown);
+// Gives an arrow or seed just shot the speed its draw gave it (see Game_ShotAim). Called after the game sets it.
+void Vr_ScaleShotSpeed(Actor* shot);
+// Draws the hookshot's laser to where it would catch and a ring there, green if it will hook (see VrAim.cpp).
+void Vr_DrawHookshotSight(PlayState* play, Vec3f* tip, Vec3f* hit, s32 hookable);
 // Keeps a just-spawned Deku nut in the throwing hand until the grip lets go. False outside VR.
 bool Vr_HoldNut(Player* player, Actor* nut);
 // Gives a nut thrown by hand the hand's velocity and an arc, as the game launches it. False for other nuts.

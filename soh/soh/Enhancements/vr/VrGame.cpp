@@ -1,4 +1,5 @@
 #include "VrGame.h"
+#include "VrAim.h"
 #include "VrItems.h"
 #include "VrOcarinaMic.h"
 #include "VrRuntime.h"
@@ -125,6 +126,12 @@ constexpr float kTicksPerSecond = 20.0f;
 constexpr float kNockReach = 0.3f;
 // Bow aim falls back to where the bow hand points when the hands are closer than this (meters).
 constexpr float kMinDrawLength = 0.08f;
+// Drawn this far (meters), a shot flies at full speed; barely drawn, at the least share of it.
+constexpr float kFullBowDraw = 0.55f;
+constexpr float kFullSlingshotDraw = 0.4f;
+constexpr float kLeastShotPower = 0.4f;
+// The power the shot just loosed was given, for the game to give it once it sets its speed (below 0 for none).
+float sShotPower = -1.0f;
 // The longest draw, from the bow hand to the string hand (meters). Past it the string and arrow stay at full draw.
 constexpr float kMaxBowDraw = 0.7f;
 constexpr float kMaxSlingshotDraw = 0.5f;
@@ -2790,6 +2797,7 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
         SohVr::DrawHandItem(play, player, SohVr::LINK_RIGHT);
         SohVr::DrawHeldMask(play);
         DrawAmmoCounter(play);
+        SohVr::Aim_DrawShotMarker(play, player);
     }
     SohVr::Items_Draw(play);
 }
@@ -3199,13 +3207,75 @@ extern "C" bool Vr_StringPull(Player* player, Vec3f* hand) {
     return true;
 }
 
+bool SohVr::Game_DrawingShot() {
+    return Vr_IsWorldStereo() && sDrawing && CurrentTool() == HeldTool::Bow;
+}
+
+bool SohVr::Game_ShotAim(Player* player, Vec3f* origin, Vec3f* direction, float* power) {
+    if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState) || Player_HoldsHookshot(player)) {
+        return false;
+    }
+    Runtime& runtime = Runtime::Get();
+    Hand bowHand = ControllerFor(LINK_RIGHT);
+    *power = 1.0f;
+    // A seed leaves from between the slingshot's arms and flies along the band: from where the drawing hand pulls it
+    // back to, through the arms, so pulling lower aims higher, as with a real slingshot. Barely drawn, it flies the way
+    // the slingshot points (the hand model's +Y).
+    MtxF hand;
+    if (Player_HoldsSlingshot(player)) {
+        if (!HandMatrix(player, LINK_RIGHT, hand)) {
+            return false;
+        }
+        const Vec3f& forks = kSlingshotForks;
+        Vec3 along = { hand.mf[1][0], hand.mf[1][1], hand.mf[1][2] };
+        *origin = { hand.mf[3][0] + forks.x * hand.mf[0][0] + forks.y * hand.mf[1][0] + forks.z * hand.mf[2][0],
+                    hand.mf[3][1] + forks.x * hand.mf[0][1] + forks.y * hand.mf[1][1] + forks.z * hand.mf[2][1],
+                    hand.mf[3][2] + forks.x * hand.mf[0][2] + forks.y * hand.mf[1][2] + forks.z * hand.mf[2][2] };
+        float pouch[3];
+        const Pose& slingshot = runtime.GetController(bowHand).gripPose;
+        float drawn = 0.0f;
+        if (DrawPoint(player, pouch) && slingshot.valid) {
+            float dx = pouch[0] - slingshot.position[0];
+            float dy = pouch[1] - slingshot.position[1];
+            float dz = pouch[2] - slingshot.position[2];
+            drawn = sqrtf(dx * dx + dy * dy + dz * dz);
+            if (drawn > kMinDrawLength) {
+                Vec3 from = ToWorld(pouch, sBuild.anchor, sBuild.unitsPerMeter);
+                along = { origin->x - from.x, origin->y - from.y, origin->z - from.z };
+            }
+        }
+        Vec3 unit = Normalized(along);
+        *direction = { unit.x, unit.y, unit.z };
+        *power = kLeastShotPower + (1.0f - kLeastShotPower) * std::min(drawn / kFullSlingshotDraw, 1.0f);
+        return true;
+    }
+    // Arrows fly from the string hand through the bow, from where the arrow is nocked.
+    const Pose& bow = runtime.GetController(bowHand).gripPose;
+    const Pose& string = runtime.GetController(ControllerFor(LINK_LEFT)).gripPose;
+    Vec3 aim = AimDirection(bowHand);
+    Vec3 draw = { bow.position[0] - string.position[0], bow.position[1] - string.position[1],
+                  bow.position[2] - string.position[2] };
+    float drawn = sqrtf(Dot(draw, draw));
+    if (bow.valid && string.valid && drawn > kMinDrawLength) {
+        aim = Normalized(RotateYaw(sYaw, draw));
+    }
+    if (player->heldActor != nullptr) {
+        *origin = player->heldActor->world.pos;
+    } else if (bow.valid) {
+        Vec3 at = ToWorld(bow.position, sBuild.anchor, sBuild.unitsPerMeter);
+        *origin = { at.x, at.y, at.z };
+    } else {
+        return false;
+    }
+    *direction = { aim.x, aim.y, aim.z };
+    *power = kLeastShotPower + (1.0f - kLeastShotPower) * std::min(drawn / kFullBowDraw, 1.0f);
+    return true;
+}
+
 extern "C" void Vr_AimProjectile(Player* player, Actor* projectile) {
     if (!Vr_IsWorldStereo() || player != GET_PLAYER(gPlayState) || projectile == nullptr) {
         return;
     }
-    SohVr::Runtime& runtime = SohVr::Runtime::Get();
-    SohVr::Hand bowHand = SohVr::ControllerFor(SohVr::LINK_RIGHT);
-    SohVr::Vec3 direction = SohVr::AimDirection(bowHand);
     // The hook flies the way the hookshot in the hand points, along its sight.
     Vec3f hookTip;
     Vec3f hookDirection;
@@ -3214,43 +3284,28 @@ extern "C" void Vr_AimProjectile(Player* player, Actor* projectile) {
         SohVr::FaceAlong(projectile, { hookDirection.x, hookDirection.y, hookDirection.z });
         return;
     }
-    // A seed leaves from between the slingshot's arms and flies along the band: from where the drawing hand pulls it
-    // back to, through the arms, so pulling lower aims higher, as with a real slingshot. Barely drawn, it flies the way
-    // the slingshot points (the hand model's +Y).
-    MtxF hand;
-    if (Player_HoldsSlingshot(player) && SohVr::HandMatrix(player, SohVr::LINK_RIGHT, hand)) {
-        const Vec3f& forks = SohVr::kSlingshotForks;
-        SohVr::Vec3 along = { hand.mf[1][0], hand.mf[1][1], hand.mf[1][2] };
-        projectile->world.pos = { hand.mf[3][0] + forks.x * hand.mf[0][0] + forks.y * hand.mf[1][0] + forks.z * hand.mf[2][0],
-                                  hand.mf[3][1] + forks.x * hand.mf[0][1] + forks.y * hand.mf[1][1] + forks.z * hand.mf[2][1],
-                                  hand.mf[3][2] + forks.x * hand.mf[0][2] + forks.y * hand.mf[1][2] + forks.z * hand.mf[2][2] };
-        projectile->prevPos = projectile->world.pos;
-        float pouch[3];
-        const SohVr::Pose& slingshot = runtime.GetController(bowHand).gripPose;
-        if (SohVr::DrawPoint(player, pouch) && slingshot.valid) {
-            float dx = pouch[0] - slingshot.position[0];
-            float dy = pouch[1] - slingshot.position[1];
-            float dz = pouch[2] - slingshot.position[2];
-            if (dx * dx + dy * dy + dz * dz > SohVr::kMinDrawLength * SohVr::kMinDrawLength) {
-                SohVr::Vec3 from = SohVr::ToWorld(pouch, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
-                along = { projectile->world.pos.x - from.x, projectile->world.pos.y - from.y,
-                          projectile->world.pos.z - from.z };
-            }
+    Vec3f origin;
+    Vec3f direction;
+    float power = 1.0f;
+    if (SohVr::Game_ShotAim(player, &origin, &direction, &power)) {
+        if (Player_HoldsSlingshot(player)) {
+            projectile->world.pos = projectile->prevPos = origin;
         }
-        SohVr::FaceAlong(projectile, SohVr::Normalized(along));
+        SohVr::FaceAlong(projectile, { direction.x, direction.y, direction.z });
+        // The harder it was drawn, the faster it flies (see Vr_ScaleShotSpeed).
+        SohVr::sShotPower = power;
         return;
     }
-    if (!Player_HoldsHookshot(player)) {
-        // Arrows and seeds fly from the string hand through the bow.
-        const SohVr::Pose& bow = runtime.GetController(bowHand).gripPose;
-        const SohVr::Pose& string = runtime.GetController(SohVr::ControllerFor(SohVr::LINK_LEFT)).gripPose;
-        SohVr::Vec3 draw = { bow.position[0] - string.position[0], bow.position[1] - string.position[1],
-                             bow.position[2] - string.position[2] };
-        if (bow.valid && string.valid && SohVr::Dot(draw, draw) > SohVr::kMinDrawLength * SohVr::kMinDrawLength) {
-            direction = SohVr::RotateYaw(SohVr::sYaw, draw);
-        }
+    SohVr::FaceAlong(projectile, SohVr::AimDirection(SohVr::ControllerFor(SohVr::LINK_RIGHT)));
+}
+
+extern "C" void Vr_ScaleShotSpeed(Actor* shot) {
+    if (SohVr::sShotPower < 0.0f || shot == nullptr) {
+        return;
     }
-    SohVr::FaceAlong(projectile, direction);
+    shot->speedXZ *= SohVr::sShotPower;
+    shot->velocity.y *= SohVr::sShotPower;
+    SohVr::sShotPower = -1.0f;
 }
 
 extern "C" void Vr_AimFromHand(Player* player, Actor* actor, s32 linkHand) {
