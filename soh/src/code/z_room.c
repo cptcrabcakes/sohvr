@@ -144,7 +144,7 @@ void func_80095D04(PlayState* play, Room* room, u32 flags) {
         SkinMatrix_Vec3fMtxFMultXYZW(&play->viewProjectionMtxF, &sp90, &sp84, &sp80);
         // In VR pieces behind the view plane come into view as the head turns, before the next game tick, so
         // they're kept by their distance from the eye instead of their depth in front of it.
-        if (Vr_IsWorldStereo()) {
+        if (Vr_RendersStereo()) {
             sp84.z = Math_Vec3f_DistXYZ(&sp90, &play->view.eye);
         }
         if (-(f32)polygonDlist->unk_06 < sp84.z) {

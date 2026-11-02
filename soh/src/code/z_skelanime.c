@@ -83,7 +83,7 @@ void SkelAnime_DrawLod(PlayState* play, void** skeleton, Vec3s* jointTable, Over
     Vec3s rot;
 
     // In VR the detailed models are always used: switching models with distance showed as things popping.
-    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0) || Vr_IsWorldStereo()) {
+    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0) || Vr_RendersStereo()) {
         lod = 0;
     }
 
@@ -202,7 +202,7 @@ void SkelAnime_DrawFlexLod(PlayState* play, void** skeleton, Vec3s* jointTable, 
     Mtx* mtx = Graph_Alloc(play->state.gfxCtx, dListCount * sizeof(Mtx));
 
     // In VR the detailed models are always used: switching models with distance showed as things popping.
-    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0) || Vr_IsWorldStereo()) {
+    if (CVarGetInteger(CVAR_ENHANCEMENT("DisableLOD"), 0) || Vr_RendersStereo()) {
         lod = 0;
     }
 

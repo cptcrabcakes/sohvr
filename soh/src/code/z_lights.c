@@ -394,7 +394,7 @@ void Lights_GlowCheck(PlayState* play) {
             params->drawGlow = false;
             // In VR the depth buffer read below is the HUD's, not the eyes', so every glow showed through walls. A
             // glow shows unless a wall stands between the eye and the light, stopping short of its torch.
-            if (Vr_IsWorldStereo()) {
+            if (Vr_RendersStereo()) {
                 params->drawGlow = !Vr_SightBlocked(play, &pos, 4000.0f, 15.0f);
                 node = node->next;
                 continue;

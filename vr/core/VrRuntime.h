@@ -54,6 +54,7 @@ struct HudQuad {
     Pose pose;          // in the play space; the picture faces along the pose's +Z
     float width = 0.0f; // meters; the height follows the rect's shape
     int32_t rect[4] = {}; // x, y, width, height in HUD texture pixels
+    float alpha = 1.0f;   // how opaque, where the runtime can fade a layer (XR_KHR_composition_layer_color_scale_bias)
 };
 
 enum class InitResult {

@@ -871,6 +871,13 @@ void Game_CutOverlay(bool cut) {
     }
 }
 
+bool Game_StreamerView() {
+    return false;
+}
+
+void Game_AddStreamerMatrices(float, uint32_t, uint32_t, std::unordered_map<Mtx*, MtxF>&) {
+}
+
 Gfx* Game_Overlay() {
     return sRender.overlay;
 }

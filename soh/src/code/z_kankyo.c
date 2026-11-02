@@ -1368,7 +1368,7 @@ void Environment_DrawSunAndMoon(PlayState* play) {
         };
 
         // In VR the sun faces the eye rather than turning with the head.
-        if (Vr_IsWorldStereo()) {
+        if (Vr_RendersStereo()) {
             Vec3f sunWorld = { play->view.eye.x + play->envCtx.sunPos.x, play->view.eye.y + play->envCtx.sunPos.y,
                                play->view.eye.z + play->envCtx.sunPos.z };
             gSPSegment(POLY_OPA_DISP++, 0x01, Vr_FacingBillboard(play, &sunWorld));
@@ -1411,7 +1411,7 @@ void Environment_DrawSunAndMoon(PlayState* play) {
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 240, 255, 180, alpha);
                 gDPSetEnvColor(POLY_OPA_DISP++, 80, 70, 20, alpha);
             }
-            if (Vr_IsWorldStereo()) {
+            if (Vr_RendersStereo()) {
                 Vec3f moonWorld = { play->view.eye.x - play->envCtx.sunPos.x,
                                     play->view.eye.y - play->envCtx.sunPos.y,
                                     play->view.eye.z - play->envCtx.sunPos.z };
@@ -1422,7 +1422,7 @@ void Environment_DrawSunAndMoon(PlayState* play) {
     }
 
     // Everything drawn after the sun and moon uses the game's own billboard again.
-    if (Vr_IsWorldStereo()) {
+    if (Vr_RendersStereo()) {
         gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
     }
 
@@ -1539,7 +1539,7 @@ void Environment_DrawLensFlare(PlayState* play, EnvironmentContext* envCtx, View
             D_8015FD80 = (s16)screenPos.y - 5.0f;
             // In VR the depth read that hides the flare behind walls (D_8011FB44) is the HUD's, not the eyes', so a
             // wall between the eye and the sun hides it instead.
-            bool sunHidden = Vr_IsWorldStereo() ? Vr_SightBlocked(play, &pos, 4000.0f, 0.0f) : (D_8011FB44 != 0xFFFC);
+            bool sunHidden = Vr_RendersStereo() ? Vr_SightBlocked(play, &pos, 4000.0f, 0.0f) : (D_8011FB44 != 0xFFFC);
             if (sunHidden || screenPos.x < 0.0f || screenPos.y < shrink || screenPos.x > SCREEN_WIDTH ||
                 screenPos.y > (SCREEN_HEIGHT - shrink)) {
                 isOffScreen = true;

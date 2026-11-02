@@ -4360,7 +4360,7 @@ void Fishing_HandleLilyPadContact(FishingProp* prop, Vec3f* entityPos, u8 fishTi
 // (see Vr_DrawDistance) than the game's camera did, so they're drawn wider and further out, and don't pop in at the
 // edges of the view.
 static s32 Fishing_InViewVr(Vec3f* projectedPos, f32 drawDistance) {
-    if (Vr_IsWorldStereo()) {
+    if (Vr_RendersStereo()) {
         return (projectedPos->z > -100.0f) && (projectedPos->z < (drawDistance * Vr_DrawDistance())) &&
                (fabsf(projectedPos->x) < (100.0f + (2.0f * projectedPos->z)));
     }
@@ -5650,7 +5650,7 @@ void Fishing_UpdateOwner(Actor* thisx, PlayState* play2) {
 
         // In VR the player watches from Link, not from this camera following the lure, so the water's look goes by
         // where their eyes are.
-        if ((Vr_IsWorldStereo() ? play->view.eye.y : sCameraEye.y) <= (WATER_SURFACE_Y(play) + 1.0f)) {
+        if ((Vr_RendersStereo() ? play->view.eye.y : sCameraEye.y) <= (WATER_SURFACE_Y(play) + 1.0f)) {
             Environment_EnableUnderwaterLights(play, 1);
             if (sFishingFoggy != 0) {
                 play->envCtx.adjFogNear = -0xB2;

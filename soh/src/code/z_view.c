@@ -155,7 +155,7 @@ void func_800AA550(View* view) {
     GraphicsContext* gfxCtx = view->gfxCtx;
 
     // In VR the world isn't letterboxed; the bars would cut off the top and bottom of each eye's view.
-    varY = Vr_IsWorldStereo() ? 0 : ShrinkWindow_GetCurrentVal();
+    varY = Vr_RendersStereo() ? 0 : ShrinkWindow_GetCurrentVal();
 
     varX = -1; // The following is optimized to varX = 0 but affects codegen
 

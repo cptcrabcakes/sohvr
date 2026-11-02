@@ -1544,7 +1544,7 @@ void Gfx_SetupFrame(GraphicsContext* gfxCtx, u8 r, u8 g, u8 b) {
 
         // In VR the world fills the headset and the HUD is cut into wrist panels, where the letterbox's bars
         // would cover the hearts and rupees.
-        if (Vr_IsWorldStereo()) {
+        if (Vr_RendersStereo()) {
             letterboxSize = 0;
         }
 

@@ -30,6 +30,9 @@ bool Game_SplitHud();
 void Game_CutOverlay(bool cut);
 // The overlay's display list, for drawing the HUD on its own.
 Gfx* Game_Overlay();
+// Whether the desktop window shows the game from its own camera (the streamer view). Not yet for Majora's Mask.
+bool Game_StreamerView();
+void Game_AddStreamerMatrices(float t, uint32_t width, uint32_t height, std::unordered_map<Mtx*, MtxF>& replacements);
 // The pieces of the HUD to show in the room.
 void Game_GetHudQuads(std::vector<HudQuad>& out);
 // A point in the play space (meters), in the world, as of the tick being built.

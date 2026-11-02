@@ -82,6 +82,13 @@ s32 Vr_ShieldOut(Player* player);
 // How many times further than usual things stay drawn: the VR Draw Distance setting while the world is shown in VR,
 // otherwise 1.
 s32 Vr_DrawDistance(void);
+// True while the world is rendered in stereo at all: from Link's eyes, as Vr_IsWorldStereo, or from the game's own
+// camera (the title screen's, or third person). For what's about drawing, not about the player's hands.
+bool Vr_RendersStereo(void);
+// Called once Link's skeleton is drawn, so matrices after it aren't taken for his body's (see the streamer view).
+void Vr_PlayerSkeletonDrawn(void);
+// A step in the iron boots, felt in the hands. Called from Player_PlaySteppingSfx.
+void Vr_IronBootsStep(void);
 // How much of his usual distance Link keeps from walls: in VR less, so the player's eyes can come up to them.
 f32 Vr_WallRadiusScale(void);
 // How see-through a fairy is drawn, 1 being as usual: in VR one close to the eyes fades, so Navi doesn't fill the

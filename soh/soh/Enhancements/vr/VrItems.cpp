@@ -647,6 +647,13 @@ const PanelRow kPlayRows[] = {
 const PanelRow kMoreRows[] = {
     OnRow("QUIVER", CVAR_SETTING("VR.Quiver")),
     OnRow("CLOSE TO WALLS", CVAR_SETTING("VR.CloseToWalls")),
+    OnRow("HAPTICS", CVAR_SETTING("VR.Haptics")),
+    OnRow("HEADPHONE MIX", CVAR_SETTING("VR.HeadphoneMix")),
+    SwitchRow("LINK'S BODY", CVAR_SETTING("VR.ShowBody"), "HIDDEN", "SHOWN"),
+    SwitchRow("THIRD PERSON", CVAR_SETTING("VR.ThirdPerson")),
+    SwitchRow("STREAMER VIEW", CVAR_SETTING("VR.StreamerView")),
+    NumberRow("TEXT SIZE", CVAR_SETTING("VR.TextSize"), 100, 50, 200, 10, "%"),
+    NumberRow("TEXT OPACITY", CVAR_SETTING("VR.TextOpacity"), 100, 20, 100, 10, "%"),
     ActionRow("< FIRST PAGE", RowKind::Page),
     ActionRow("CLOSE", RowKind::Close),
 };

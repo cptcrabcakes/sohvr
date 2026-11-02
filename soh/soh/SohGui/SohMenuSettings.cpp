@@ -1,3 +1,4 @@
+#include <deque>
 #include "SohMenu.h"
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/enhancementTypes.h"
@@ -61,6 +62,13 @@ static const std::map<int32_t, const char*> vrTitleViewMap = {
     { 0, "From Its Camera" },
     { 1, "Through Link's Eyes" },
     { 2, "On the Floating Screen" },
+};
+
+static const std::map<int32_t, const char*> vrHudPlaceMap = {
+    { 0, "Its Own Place" },
+    { 1, "Other Wrist" },
+    { 2, "Floating Ahead" },
+    { 3, "Hidden" },
 };
 
 static const std::map<int32_t, const char*> vrSwordHandMap = {
@@ -650,6 +658,45 @@ void SohMenu::AddMenuSettings() {
                      .Tooltip("How the title screen's cutscene is watched: following its camera around the world, "
                               "through the eyes of the Link riding in it, or flat on the floating screen, which is "
                               "the calmest."));
+    AddWidget(path, "Third Person", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.ThirdPerson"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "Play from the game's own camera behind Link, in 3D, looking around with your head. The controllers work "
+            "as a gamepad, as on the floating screen."));
+    AddWidget(path, "Streamer View", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.StreamerView"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "The desktop window shows the game from its own camera, with Link and the HUD, while you play first "
+            "person: for streaming or recording. It draws the game once more each frame."));
+    AddWidget(path, "Text Size: %d%%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.TextSize"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(50).Max(200).DefaultValue(100).Format("%d%%").Tooltip(
+            "How big the text panel is."));
+    AddWidget(path, "Text Opacity: %d%%", WIDGET_CVAR_SLIDER_INT)
+        .CVar(CVAR_SETTING("VR.TextOpacity"))
+        .RaceDisable(false)
+        .Options(IntSliderOptions().Min(20).Max(100).DefaultValue(100).Format("%d%%").Tooltip(
+            "How see-through the text panel is, where your headset's runtime can fade it."));
+    AddWidget(path, "Haptics", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.Haptics"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "Feel a heartbeat at one heart or less, blows hardest in the hand on the side they came from, every step in "
+            "the iron boots, and the ocarina humming as you play."));
+    AddWidget(path, "Headphone Mix", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.HeadphoneMix"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
+            "While in the headset, the game mixes its sound for headphones, as its own Headset sound setting does."));
+    AddWidget(path, "Show Link's Body", WIDGET_CVAR_CHECKBOX)
+        .CVar(CVAR_SETTING("VR.ShowBody"))
+        .RaceDisable(false)
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "Shows Link's body below your view, with his arms reaching to your hands. His body doesn't crouch or lean "
+            "with you."));
     AddWidget(path, "Arrows from a Quiver", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.Quiver"))
         .RaceDisable(false)
@@ -667,6 +714,26 @@ void SohMenu::AddMenuSettings() {
         .Options(IntSliderOptions().Min(1).Max(5).DefaultValue(3).Format("%dx").Tooltip(
             "How much further than usual people, enemies and things stay drawn in VR, so they don't pop in as "
             "you look around. Higher costs more performance."));
+
+    // Where each piece of the wrist HUD goes, and how big it is.
+    AddWidget(path, "Wrist HUD", WIDGET_SEPARATOR_TEXT);
+    for (const char* piece : { "Hearts", "Rupees", "Buttons", "Map", "Timer", "Ammo" }) {
+        // Kept for as long as the menu, which holds on to them: a deque never moves what it already holds.
+        static std::deque<std::string> sLabels;
+        static std::deque<std::string> sCvars;
+        sLabels.push_back(std::string(piece));
+        sCvars.push_back(std::string(CVAR_SETTING("VR.Hud.")) + piece + ".Place");
+        AddWidget(path, sLabels.back().c_str(), WIDGET_CVAR_COMBOBOX)
+            .CVar(sCvars.back().c_str())
+            .RaceDisable(false)
+            .Options(ComboboxOptions().ComboMap(vrHudPlaceMap).DefaultIndex(0));
+        sLabels.push_back(std::string(piece) + " Size: %d%%");
+        sCvars.push_back(std::string(CVAR_SETTING("VR.Hud.")) + piece + ".Size");
+        AddWidget(path, sLabels.back().c_str(), WIDGET_CVAR_SLIDER_INT)
+            .CVar(sCvars.back().c_str())
+            .RaceDisable(false)
+            .Options(IntSliderOptions().Min(40).Max(250).DefaultValue(100).Format("%d%%"));
+    }
 
     // Temporary, for lining the hand models up exactly.
     AddWidget(path, "Hand Fine Tuning", WIDGET_SEPARATOR_TEXT);

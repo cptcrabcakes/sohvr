@@ -32,6 +32,11 @@ bool Game_SplitHud();
 void Game_CutOverlay(bool cut);
 // The overlay's display list on its own.
 Gfx* Game_Overlay();
+// Whether the desktop window shows the game from its own camera (the streamer view) instead of the left eye.
+bool Game_StreamerView();
+// Adds the streamer view's camera to the frame's matrix replacements, for a window of this size. t is the
+// interpolation step of the frame.
+void Game_AddStreamerMatrices(float t, uint32_t width, uint32_t height, std::unordered_map<Mtx*, MtxF>& replacements);
 // Where each piece of the HUD goes this frame.
 void Game_GetHudQuads(std::vector<HudQuad>& out);
 

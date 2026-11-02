@@ -2972,7 +2972,7 @@ s32 Actor_CullingVolumeTest(PlayState* play, Actor* actor, Vec3f* arg2, f32 arg3
     // In VR the head turns between game ticks faster than a test of the view's direction can follow, so anything
     // within the actor's draw distance counts as in view whichever way the player faces. Testing the frustum made
     // things pop in at the edges of a quick turn.
-    if (Vr_IsWorldStereo()) {
+    if (Vr_RendersStereo()) {
         return Math_Vec3f_DistXYZ(&actor->world.pos, &play->view.eye) <
                (actor->uncullZoneForward + actor->uncullZoneScale);
     }
@@ -3018,7 +3018,7 @@ s32 Ship_CalcShouldDrawAndUpdate(PlayState* play, Actor* actor, Vec3f* projected
 
     // In VR, as in Actor_CullingVolumeTest, it doesn't matter which way the player faces: the head turns between
     // ticks faster than a test of the view's direction can follow.
-    if (Vr_IsWorldStereo()) {
+    if (Vr_RendersStereo()) {
         if (Math_Vec3f_DistXYZ(&actor->world.pos, &play->view.eye) <
             (((actor->uncullZoneForward + adder) * multiplier) + actor->uncullZoneScale)) {
             *shouldDraw = true;

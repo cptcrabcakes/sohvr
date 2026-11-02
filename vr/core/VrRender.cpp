@@ -121,6 +121,44 @@ struct Mirror {
     D3D11_TEXTURE2D_DESC desc = {};
 };
 Mirror sMirror;
+// The streamer view's frame, copied out of the interpreter's framebuffer before the HUD's pass reuses it.
+Mirror sStreamer;
+
+// Copies the whole frame just rendered into the streamer view's texture. Returns whether it holds it.
+bool CopyToStreamer(Fast::Interpreter* intp) {
+    Fast::GfxRenderingAPIDX11* dx11 = GetDx11(intp);
+    ID3D11Texture2D* frame = FrameTexture(intp);
+    if (dx11 == nullptr || frame == nullptr) {
+        return false;
+    }
+    D3D11_TEXTURE2D_DESC frameDesc;
+    frame->GetDesc(&frameDesc);
+    if (sStreamer.view == nullptr || sStreamer.desc.Width != frameDesc.Width ||
+        sStreamer.desc.Height != frameDesc.Height || sStreamer.desc.Format != frameDesc.Format) {
+        sStreamer = {};
+        D3D11_TEXTURE2D_DESC desc = frameDesc;
+        desc.SampleDesc.Count = 1;
+        desc.SampleDesc.Quality = 0;
+        desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+        desc.MiscFlags = 0;
+        desc.Usage = D3D11_USAGE_DEFAULT;
+        desc.CPUAccessFlags = 0;
+        ID3D11Device* device = dx11->mDevice.Get();
+        if (FAILED(device->CreateTexture2D(&desc, nullptr, &sStreamer.texture)) ||
+            FAILED(device->CreateShaderResourceView(sStreamer.texture.Get(), nullptr, &sStreamer.view))) {
+            sStreamer = {};
+            return false;
+        }
+        sStreamer.desc = desc;
+    }
+    // A multisampled frame is resolved into it; otherwise it's copied.
+    if (frameDesc.SampleDesc.Count > 1) {
+        dx11->mContext->ResolveSubresource(sStreamer.texture.Get(), 0, frame, 0, frameDesc.Format);
+    } else {
+        dx11->mContext->CopyResource(sStreamer.texture.Get(), frame);
+    }
+    return true;
+}
 
 // Copies the eye just rendered into the mirror. Returns whether the mirror holds it.
 bool CopyToMirror(Fast::Interpreter* intp, const Fov& fov) {
@@ -251,6 +289,7 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
 
     bool stereo = Game_RenderStereo();
     bool mirrored = false;
+    bool streamed = false;
     if (!runtime.ShouldRender()) {
         // The headset isn't showing this app; keep the window drawing as usual.
         intp->StartFrame();
@@ -271,6 +310,17 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
             }
         }
         Game_CutOverlay(false);
+        // The streamer view: the window shows the game from its own camera, with Link and the HUD, while the headset
+        // plays first person. Drawn before the HUD's pass, which has to come last.
+        if (Game_StreamerView()) {
+            uint32_t width = static_cast<uint32_t>(std::max(static_cast<int>(intp->mGameWindowViewport.width), 1));
+            uint32_t height = static_cast<uint32_t>(std::max(static_cast<int>(intp->mGameWindowViewport.height), 1));
+            SetRenderSize(intp.get(), width, height);
+            std::unordered_map<Mtx*, MtxF> replacements = mtxReplacements;
+            Game_AddStreamerMatrices(intp->mInterpolationT, width, height, replacements);
+            intp->Run(commands, replacements);
+            streamed = CopyToStreamer(intp.get());
+        }
         if (splitHud) {
             DrawHud(intp.get(), mtxReplacements);
         }
@@ -285,7 +335,9 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
     }
     runtime.EndFrame(stereo, hud);
 
-    if (mirrored) {
+    if (streamed) {
+        intp->mGfxFrameBuffer = reinterpret_cast<uintptr_t>(sStreamer.view.Get());
+    } else if (mirrored) {
         intp->mGfxFrameBuffer = reinterpret_cast<uintptr_t>(sMirror.view.Get());
     }
     gui->EndDraw();

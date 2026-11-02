@@ -1384,7 +1384,7 @@ void Play_Draw(PlayState* play) {
             Matrix_MtxFToMtx(MATRIX_CHECKFLOATS(&play->billboardMtxF), Graph_Alloc(gfxCtx, sizeof(Mtx)));
         // In VR billboards face the eye from here on (see gVrBillboard). Not sooner: above, the same matrix still
         // holds the camera's view while the view-projection matrix, which culling relies on, is built from it.
-        gVrBillboard = Vr_IsWorldStereo() ? &play->billboardMtxF : NULL;
+        gVrBillboard = Vr_RendersStereo() ? &play->billboardMtxF : NULL;
 
         gSPSegment(POLY_OPA_DISP++, 0x01, play->billboardMtx);
 

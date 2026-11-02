@@ -42,6 +42,14 @@ The other options on the VR page are below. Most of them can also be changed in 
 | Sword Hand | Link is left-handed. Choose Right to put the sword in your right hand instead. It also decides which shoulder the sword is drawn from; the shield is drawn from the other one. |
 | Title Screen | How the title screen's cutscene is watched: from its own camera as it moves (kept above the ground), through the eyes of the Link riding in it, or on the floating screen, which is the calmest. |
 | Draw Distance | How much further than usual people, enemies and things stay drawn (1x to 5x, 3x by default), so they don't pop in as you look around. Far-away models always use their detailed versions too. |
+| Third Person | Play from the game's own camera behind Link, in 3D, looking around with your head; the controllers work as a gamepad, as on the floating screen. |
+| Streamer View | The desktop window shows the game from its own camera, with Link and the HUD, while you play first person. It draws the game once more each frame. |
+| Text Size, Text Opacity | How big and how see-through the text panel is (opacity where your headset's runtime can fade a panel). |
+| Haptics | A heartbeat at one heart or less, blows felt hardest on the side they came from, every step in the iron boots, and the ocarina humming as you play. |
+| Headphone Mix | While in the headset, the game mixes its sound for headphones, as its own Headset sound setting does. |
+| Show Link's Body | Link's body below your view, with his arms reaching to your hands. It doesn't crouch or lean with you. |
+| Arrows from a Quiver, Get Close to Walls | See Playing. Both on by default. |
+| Wrist HUD | For each piece (hearts, rupees, buttons, map, timer, ammo): its own place, the other wrist, floating ahead, or hidden, and its size. |
 | Hand Fine Tuning | Small rotation adjustments for each hand model. Leave these at 0 unless the hands look misaligned. |
 
 ## Playing

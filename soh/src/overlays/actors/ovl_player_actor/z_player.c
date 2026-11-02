@@ -1765,6 +1765,8 @@ void Player_PlaySteppingSfx(Player* this, f32 pitchAdjustment) {
 
     if (this->currentBoots == PLAYER_BOOTS_IRON) {
         sfxId = NA_SE_PL_WALK_HEAVYBOOTS;
+        // In VR each heavy step is felt in the hands.
+        Vr_IronBootsStep();
     } else {
         sfxId = Player_ApplyFloorAndAgeSfxOffsets(this, NA_SE_PL_WALK_GROUND);
     }
@@ -12544,6 +12546,7 @@ void Player_DrawGameplay(PlayState* play, Player* this, s32 lod, Gfx* cullDList,
     // A mirrored VR hand may have been the last limb to set the culling.
     if (overrideLimbDraw == Player_OverrideLimbDrawVr) {
         Player_SetCullingInvertedVr(play, sVrWorldMirrored);
+        Vr_PlayerSkeletonDrawn();
     }
 
     if ((overrideLimbDraw == Player_OverrideLimbDrawGameplayDefault) && (this->currentMask != PLAYER_MASK_NONE)) {

@@ -197,6 +197,7 @@ struct Runtime::Impl {
     XrSpace aimSpaces[HAND_COUNT] = {};
     // The controller extensions turned on (see CreateInstance).
     std::vector<std::string> controllerExtensions;
+    bool colorScaleBias = false;
 
     bool CreateInstance();
     bool CheckAdapter();
@@ -227,6 +228,11 @@ bool Runtime::Impl::CreateInstance() {
         return false;
     }
     std::vector<const char*> extensions = { XR_KHR_D3D11_ENABLE_EXTENSION_NAME };
+    // Lets a HUD piece be see-through (HudQuad::alpha), where the runtime has it.
+    colorScaleBias = HasExtension(available, XR_KHR_COMPOSITION_LAYER_COLOR_SCALE_BIAS_EXTENSION_NAME);
+    if (colorScaleBias) {
+        extensions.push_back(XR_KHR_COMPOSITION_LAYER_COLOR_SCALE_BIAS_EXTENSION_NAME);
+    }
     if (HasExtension(available, XR_EXT_LOCAL_FLOOR_EXTENSION_NAME)) {
         extensions.push_back(XR_EXT_LOCAL_FLOOR_EXTENSION_NAME);
     }
@@ -890,6 +896,7 @@ void Runtime::EndFrame(bool stereo, const std::vector<HudQuad>& hud) {
     XrCompositionLayerProjection projection{ XR_TYPE_COMPOSITION_LAYER_PROJECTION };
     XrCompositionLayerQuad quad{ XR_TYPE_COMPOSITION_LAYER_QUAD };
     std::array<XrCompositionLayerQuad, kMaxLayers - 1> hudQuads{};
+    std::array<XrCompositionLayerColorScaleBiasKHR, kMaxLayers - 1> hudFades{};
     std::vector<const XrCompositionLayerBaseHeader*> layers;
 
     if (mImpl->frameState.shouldRender && stereo && mImpl->eyeSubmitted[0] && mImpl->eyeSubmitted[1]) {
@@ -924,6 +931,15 @@ void Runtime::EndFrame(bool stereo, const std::vector<HudQuad>& hud) {
                              piece.pose.orientation[3] },
                            { piece.pose.position[0], piece.pose.position[1], piece.pose.position[2] } };
             layer.size = { piece.width, piece.width * piece.rect[3] / piece.rect[2] };
+            // Premultiplied, so all four channels scale together.
+            if (piece.alpha < 1.0f && mImpl->colorScaleBias) {
+                XrCompositionLayerColorScaleBiasKHR& fade = hudFades[i];
+                fade = { XR_TYPE_COMPOSITION_LAYER_COLOR_SCALE_BIAS_KHR };
+                float a = std::clamp(piece.alpha, 0.0f, 1.0f);
+                fade.colorScale = { a, a, a, a };
+                fade.colorBias = { 0.0f, 0.0f, 0.0f, 0.0f };
+                layer.next = &fade;
+            }
             layers.push_back(reinterpret_cast<const XrCompositionLayerBaseHeader*>(&layer));
         }
     } else if (mImpl->frameState.shouldRender && !stereo && mImpl->screenSubmitted && mImpl->screenPlaced) {
