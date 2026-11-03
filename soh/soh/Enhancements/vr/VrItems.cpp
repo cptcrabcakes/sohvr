@@ -1016,7 +1016,7 @@ void Items_OnFrame(bool onScreen) {
     if (!sMenu.open) {
         Player* player = GET_PLAYER(gPlayState);
         bool carrying = (player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR) != 0;
-        if (menuPressed && !carrying) {
+        if (menuPressed && !carrying && !Game_DrawingShot()) {
             Open(HAND_LEFT, onScreen);
         }
         return;

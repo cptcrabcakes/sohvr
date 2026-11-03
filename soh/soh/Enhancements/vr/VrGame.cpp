@@ -650,7 +650,10 @@ void UpdateBoomerang() {
     }
     Hand hand = ControllerFor(LINK_LEFT);
     bool grip = Runtime::Get().GetController(hand).gripHeld;
-    if (grip) {
+    // A squeeze that chooses from the item wheel doesn't take hold of it, so letting go of that one throws nothing.
+    if (Items_MenuOpen()) {
+        sBoomerangGripDown = false;
+    } else if (grip) {
         sBoomerangGripDown = true;
     } else if (sBoomerangGripDown) {
         sBoomerangGripDown = false;
@@ -1160,6 +1163,10 @@ void CheckHookshotPull() {
 // leaves it when it's shot. The slingshot's seeds don't need taking.
 bool sArrowInHand = false;
 bool sQuiverGripLatched = false;
+// Seconds since the string was last let go, and how long after that the bow hand is still taken for aiming.
+float sSinceShot = 10.0f;
+constexpr float kShotSettleTime = 0.4f;
+float FrameStep();
 
 bool UsesQuiver(Player* player) {
     return CVarGetInteger(CVAR_VR_QUIVER, 1) && CurrentTool() == HeldTool::Bow && !Player_HoldsSlingshot(player);
@@ -1176,7 +1183,7 @@ void UpdateQuiver() {
         sArrowInHand = false;
         return;
     }
-    if (pressed && !sArrowInHand && HandOverShoulder(stringHand.gripPose)) {
+    if (pressed && !sArrowInHand && !Items_MenuOpen() && HandOverShoulder(stringHand.gripPose)) {
         if (AMMO(ITEM_BOW) > 0) {
             sArrowInHand = true;
             Player_PlaySfx(&player->actor, NA_SE_PL_CHANGE_ARMS);
@@ -1194,13 +1201,20 @@ void UpdateDraw() {
     HeldTool tool = CurrentTool();
     bool held = stringHand.triggerHeld;
     bool quiver = UsesQuiver(GET_PLAYER(gPlayState));
+    sSinceShot += FrameStep();
     if (tool != HeldTool::Bow || !held) {
         // Letting go shoots the arrow, which leaves the hand.
-        if (sDrawing && quiver) {
-            sArrowInHand = false;
+        if (sDrawing) {
+            sSinceShot = 0.0f;
+            if (quiver) {
+                sArrowInHand = false;
+            }
         }
         sDrawing = false;
-    } else if (!sDrawTriggerLatched && stringHand.gripPose.valid && bowHand.gripPose.valid &&
+    } else if (!sDrawTriggerLatched && quiver && !sArrowInHand && !Items_MenuOpen()) {
+        // Nocking with no arrow: a light buzz, to say one has to come from the quiver first.
+        Runtime::Get().Vibrate(ControllerFor(LINK_LEFT), 0.12f, 0.03f);
+    } else if (!sDrawTriggerLatched && stringHand.gripPose.valid && bowHand.gripPose.valid && !Items_MenuOpen() &&
                (!quiver || sArrowInHand)) {
         float dx = stringHand.gripPose.position[0] - bowHand.gripPose.position[0];
         float dy = stringHand.gripPose.position[1] - bowHand.gripPose.position[1];
@@ -1796,7 +1810,7 @@ void UpdateLiftGrab() {
         const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
         bool pressed = state.gripHeld && !sLiftGripLatched[hand];
         sLiftGripLatched[hand] = state.gripHeld;
-        if (!pressed || !canLift || !state.gripPose.valid) {
+        if (!pressed || !canLift || !state.gripPose.valid || Items_MenuOpen()) {
             continue;
         }
         // Something heavy goes up once the second hand closes on it too.
@@ -1845,7 +1859,7 @@ void UpdateMasks() {
     Player* player = GET_PLAYER(gPlayState);
     for (int hand = 0; hand < HAND_COUNT; hand++) {
         const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
-        bool pressed = state.gripHeld && !sMaskGripLatched[hand];
+        bool pressed = state.gripHeld && !sMaskGripLatched[hand] && !Items_MenuOpen();
         sMaskGripLatched[hand] = state.gripHeld;
         if (sHeldMask != ITEM_NONE) {
             if (hand == sMaskHand && !HandAtFace(state.gripPose)) {
@@ -1984,7 +1998,8 @@ void UpdateNaviTouch() {
         const ControllerState& state = runtime.GetController(static_cast<Hand>(hand));
         bool pressed = state.gripHeld && !sNaviGripLatched[hand];
         sNaviGripLatched[hand] = state.gripHeld;
-        if (!pressed || navi == nullptr || !state.gripPose.valid || sNaviCooldown > 0.0f) {
+        if (!pressed || navi == nullptr || !state.gripPose.valid || sNaviCooldown > 0.0f || Items_MenuOpen() ||
+            HandOverShoulder(state.gripPose) || HandAtFace(state.gripPose)) {
             continue;
         }
         float at[3];
@@ -2006,7 +2021,8 @@ void UpdateNaviTouch() {
 // button did.
 constexpr float kGiveReach = 0.42f;
 constexpr float kGiveAngle = 30.0f;
-constexpr float kGiveHold = 0.3f;
+constexpr float kGiveHold = 0.5f;
+constexpr float kGiveLowest = 0.6f; // meters below the head a hand held out can be
 float sGiveHeldFor = 0.0f;
 float sGiveCooldown = 0.0f;
 
@@ -2040,7 +2056,8 @@ void UpdateGiving() {
                      hand.position[2] - head.position[2] };
         Vec3 toNpc = { at[0] - head.position[0], at[1] - head.position[1], at[2] - head.position[2] };
         float reach = sqrtf(Dot(out, out));
-        offered = reach > kGiveReach && Dot(Normalized(out), Normalized(toNpc)) > cosf(DEG_TO_RAD(kGiveAngle));
+        offered = reach > kGiveReach && out.y > -kGiveLowest &&
+                  Dot(Normalized(out), Normalized(toNpc)) > cosf(DEG_TO_RAD(kGiveAngle));
     }
     sGiveHeldFor = offered ? sGiveHeldFor + FrameStep() : 0.0f;
     if (sGiveHeldFor >= kGiveHold) {
@@ -2070,7 +2087,9 @@ void UpdateDigging() {
         }
     }
     const Pose& head = Runtime::Get().GetHead();
-    if (dampe == nullptr || !head.valid || sDigCooldown > 0.0f) {
+    bool emptyHanded = player->heldItemAction == PLAYER_IA_NONE && Player_GetMeleeWeaponHeld(player) == 0 &&
+                       !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR);
+    if (dampe == nullptr || !head.valid || sDigCooldown > 0.0f || !emptyHanded) {
         return;
     }
     for (int hand = 0; hand < HAND_COUNT; hand++) {
@@ -2220,7 +2239,7 @@ void UpdateClimbOutOfWater() {
         const ControllerState& state = Runtime::Get().GetController(static_cast<Hand>(hand));
         bool pressed = state.gripHeld && !sClimbOutGripLatched[hand];
         sClimbOutGripLatched[hand] = state.gripHeld;
-        if (!pressed || !canClimb || !state.gripPose.valid || flat < 0.001f) {
+        if (!pressed || !canClimb || !state.gripPose.valid || flat < 0.001f || Items_MenuOpen()) {
             continue;
         }
         float ahead = ((state.gripPose.position[0] - head.position[0]) * forward.x +
@@ -2251,7 +2270,7 @@ void UpdateTwoHanded() {
     Hand other = ControllerFor(LINK_RIGHT);
     const ControllerState& mainState = runtime.GetController(main);
     const ControllerState& otherState = runtime.GetController(other);
-    bool pressed = otherState.gripHeld && !sTwoHandGripLatched;
+    bool pressed = otherState.gripHeld && !sTwoHandGripLatched && !Items_MenuOpen();
     sTwoHandGripLatched = otherState.gripHeld;
     if (!TwoHandable(GET_PLAYER(gPlayState)) || !otherState.gripHeld || !mainState.gripPose.valid ||
         !otherState.gripPose.valid) {
@@ -3585,6 +3604,18 @@ Pose Game_PanelInFront(float distance, float drop) {
     return PanelInFront(distance, drop);
 }
 
+// Lets go of what's held in a hand outside the game's own items: a mask on its way to the face, the Lens of Truth
+// (turned off if it's on), a readied spell, and an arrow from the quiver.
+void DropHandHeld() {
+    sHeldMask = ITEM_NONE;
+    sReadySpell = ITEM_NONE;
+    sArrowInHand = false;
+    if (sHoldingLens && gPlayState != nullptr && gPlayState->actorCtx.lensActive) {
+        Actor_DisableLens(gPlayState);
+    }
+    sHoldingLens = false;
+}
+
 void Game_OnFrame() {
     Runtime& runtime = Runtime::Get();
     sLatchedButtons |= CurrentButtons();
@@ -3650,6 +3681,12 @@ void Game_OnFrame() {
         UpdateTwoHanded();
         UpdateQuiver();
         UpdateHaptics();
+        // Climbing or carrying takes the hands: a mask, the lens, a spell or an arrow held in them goes back.
+        Player* busy = GET_PLAYER(gPlayState);
+        if ((Climbing(busy) || (busy->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) &&
+            (sHeldMask != ITEM_NONE || sHoldingLens || sReadySpell != ITEM_NONE || sArrowInHand)) {
+            DropHandHeld();
+        }
         UpdateNaviTouch();
         UpdateGiving();
         UpdateDigging();
@@ -3670,14 +3707,37 @@ void Game_OnFrame() {
                 Climbing(GET_PLAYER(gPlayState))) {
                 continue;
             }
-            // With the bow out, the string hand reaching over its shoulder takes an arrow (see UpdateQuiver).
-            if (UsesQuiver(GET_PLAYER(gPlayState)) && hand == ControllerFor(LINK_LEFT)) {
+            // Choosing from the item wheel or the settings isn't drawing anything, nor is the game's own spin attack
+            // carrying the sword around, or its charge.
+            Player* spinner = GET_PLAYER(gPlayState);
+            if (Items_MenuOpen() || (spinner->stateFlags2 & PLAYER_STATE2_SPIN_ATTACKING) ||
+                (spinner->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK)) {
                 continue;
             }
+            // With a bow or slingshot out, the string hand comes back past its shoulder as it draws, so it never
+            // draws the sword or shield; with the quiver, it takes an arrow there instead (see UpdateQuiver). The
+            // bow hand still can, but not while the string is drawn or just after a shot, when it's aiming.
+            if (CurrentTool() == HeldTool::Bow &&
+                (hand == ControllerFor(LINK_LEFT) || sDrawing || sSinceShot < kShotSettleTime)) {
+                continue;
+            }
+            Player* gesturer = GET_PLAYER(gPlayState);
             bool swordOnRight = CVarGetInteger(CVAR_VR_SWORD_IN_RIGHT_HAND, 0) != 0;
             if (OverRightShoulder(state.gripPose) != swordOnRight && HasShield()) {
+                // The shield only comes out where Link's right hand is free for it: not while it holds a bow,
+                // hookshot or something carried, nor with a weapon held in both hands, nor in the water.
+                bool handFree = CurrentTool() == HeldTool::None && !Player_HoldsTwoHandedWeapon(gesturer) &&
+                                !(gesturer->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_WATER));
+                if (!handFree && !sShieldOut) {
+                    runtime.Vibrate(static_cast<Hand>(hand), 0.15f, 0.03f);
+                    continue;
+                }
                 sShieldOut = !sShieldOut;
                 sRefreshHandModels = true;
+                // The shield takes the hand: a mask, the lens or a spell held in it goes back.
+                if (sShieldOut) {
+                    DropHandHeld();
+                }
                 // Into the hand that reached for it, unless the sword is already there.
                 if (sShieldOut && !SwordDrawn(GET_PLAYER(gPlayState)) && CurrentTool() == HeldTool::None) {
                     PutLinkHandOn(LINK_RIGHT, static_cast<Hand>(hand));
@@ -3691,6 +3751,9 @@ void Game_OnFrame() {
             bool drawn = SwordDrawn(GET_PLAYER(gPlayState));
             if (!drawn) {
                 PutLinkHandOn(LINK_LEFT, static_cast<Hand>(hand));
+                // The sword goes into the hand: whatever else it was holding (a mask, the lens, a readied spell)
+                // goes back.
+                DropHandHeld();
             }
             RequestItem(drawn ? VR_REQUEST_PUT_AWAY : VR_REQUEST_DRAW_SWORD);
             sSwordGestureCooldown = kSwordGestureCooldown;
@@ -3706,8 +3769,8 @@ void Game_OnFrame() {
         bool useTrigger = runtime.GetController(ControllerFor(ItemHand(held))).triggerHeld;
         bool thrownItem = held == ITEM_BOMB || held == ITEM_BOMBCHU || held == ITEM_NUT || held == ITEM_STICK;
         bool physicalItem = (held >= ITEM_BOTTLE && held <= ITEM_POE) || held == ITEM_FISHING_POLE;
-        if (useTrigger && !sUseTriggerLatched && CurrentTool() == HeldTool::None && held < ITEM_NONE_FE && !thrownItem &&
-            !physicalItem &&
+        if (useTrigger && !sUseTriggerLatched && !Items_MenuOpen() && CurrentTool() == HeldTool::None &&
+            held < ITEM_NONE_FE && !thrownItem && !physicalItem &&
             Player_GetMeleeWeaponHeld(player) == 0 && !(player->stateFlags1 & PLAYER_STATE1_CARRYING_ACTOR)) {
             RequestItem(VR_REQUEST_USE_HELD);
         }
@@ -3920,14 +3983,26 @@ void Game_RequestItem(int request) {
 }
 
 void Game_TakeItem(uint8_t item, Hand hand, int8_t slot) {
-    sHeldMask = ITEM_NONE;
+    Player* taker = GET_PLAYER(gPlayState);
+    // Taking what's already in hand again only moves it to the hand that took it: using it again would put it away.
+    if (slot < 0 && item == taker->heldItemId && taker->heldItemAction != PLAYER_IA_NONE) {
+        if (HeldInOneHand(item)) {
+            PutLinkHandOn(ItemHand(item), hand);
+        }
+        return;
+    }
+    DropHandHeld();
     sBottleOnButton = false;
     sBottleContent = ITEM_NONE;
-    sReadySpell = ITEM_NONE;
-    sHoldingLens = false;
     // A mask goes into the hand, to be put on by bringing it to the face. On the floating screen there's no face
     // to bring it to, so choosing it puts it on, as its button did. Spells and the lens are the same.
     bool physical = !ScreenGameplay();
+    // The lens, a mask or a spell is held in the hands themselves, so whatever the game has in them goes away first.
+    bool heldByHand = IsSpell(item) || item == ITEM_LENS || (item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH);
+    if (physical && heldByHand &&
+        (taker->heldItemAction != PLAYER_IA_NONE || Player_GetMeleeWeaponHeld(taker) != 0)) {
+        RequestItem(VR_REQUEST_PUT_AWAY);
+    }
     if (physical && IsSpell(item)) {
         sReadySpell = item;
         sSpellCharge = 0.0f;
@@ -5233,6 +5308,11 @@ extern "C" s32 Vr_DrawDistance(void) {
 
 extern "C" s32 Vr_ShieldOut(Player* player) {
     if (!Vr_IsWorldStereo() || Vr_ViewFromCamera() || player != GET_PLAYER(gPlayState)) {
+        return -1;
+    }
+    // Carrying, swimming, or with a weapon in both hands, Link's hands are the game's.
+    if ((player->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_WATER)) ||
+        Player_HoldsTwoHandedWeapon(player)) {
         return -1;
     }
     return (SohVr::sShieldOut && SohVr::HasShield()) ? 1 : 0;
