@@ -1,4 +1,5 @@
 #include "VrItems.h"
+#include "VrLauncher.h"
 #include "VrGame.h"
 #include "VrRuntime.h"
 
@@ -35,7 +36,7 @@ constexpr float kHoverGrow = 1.5f;
 constexpr float kFaceReach = 0.18f;
 constexpr float kMaskSize = 0.2f;
 
-enum class EntryKind { UseItem, Mask, Category, Pause };
+enum class EntryKind { UseItem, Mask, Category, Pause, SwitchGame };
 
 struct Entry {
     EntryKind kind;
@@ -203,6 +204,11 @@ std::vector<Entry> CategoryEntries(int category) {
             Entry pause = { EntryKind::Pause, Player_GetItemModelVr(ITEM_TINGLE_MAP) };
             if (pause.model != GID_NONE) {
                 out.push_back(pause);
+            }
+            // The other game, shown by its ocarina.
+            Entry other = { EntryKind::SwitchGame, Player_GetItemModelVr(ITEM_OCARINA_OF_TIME) };
+            if (other.model != GID_NONE) {
+                out.push_back(other);
             }
             break;
         }
@@ -477,6 +483,10 @@ void Choose(const Entry& entry) {
         case EntryKind::Pause:
             Close();
             sPendingPress = BTN_START;
+            break;
+        case EntryKind::SwitchGame:
+            Close();
+            SwitchToGame("oot");
             break;
     }
     Runtime::Get().Vibrate(sMenu.hand, 0.5f, 0.05f);

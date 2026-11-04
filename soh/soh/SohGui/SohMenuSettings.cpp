@@ -1,6 +1,7 @@
 #include <deque>
 #include "SohMenu.h"
 #include "soh/Enhancements/vr/VrGame.h"
+#include "VrLauncher.h"
 #include "soh/Notification/Notification.h"
 #include "soh/Enhancements/enhancementTypes.h"
 #include "SohModals.h"
@@ -727,6 +728,10 @@ void SohMenu::AddMenuSettings() {
 
     // The controls editor: each action on the controllers' button of the player's choosing, picked from the list or by
     // pressing it.
+    AddWidget(path, "Play Majora's Mask", WIDGET_BUTTON)
+        .RaceDisable(false)
+        .Callback([](WidgetInfo& info) { SohVr::SwitchToGame("mm"); })
+        .Options(ButtonOptions().Tooltip("Closes this game and starts the other one, in the headset if you're in it."));
     AddWidget(path, "VR Controls", WIDGET_SEPARATOR_TEXT);
     {
         static const char* const sActionNames[SohVr::VR_ACTION_COUNT] = {

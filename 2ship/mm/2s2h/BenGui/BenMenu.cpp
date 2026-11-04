@@ -1,3 +1,4 @@
+#include "VrLauncher.h"
 #include "BenMenu.h"
 #include "BenGui.hpp"
 #include "UIWidgets.hpp"
@@ -672,6 +673,9 @@ void BenMenu::AddSettings() {
     path.sidebarName = "VR";
     path.column = SECTION_COLUMN_1;
     AddSidebarEntry("Settings", "VR", 1);
+    AddWidget(path, "Play Ocarina of Time", WIDGET_BUTTON)
+        .Callback([](WidgetInfo& info) { SohVr::SwitchToGame("oot"); })
+        .Options(ButtonOptions().Tooltip("Closes this game and starts the other one, in the headset if you're in it."));
     AddWidget(path, "Enable VR", WIDGET_CVAR_CHECKBOX)
         .CVar("gSettings.VR.Enabled")
         .Options(CheckboxOptions().Tooltip("Plays in an OpenXR headset (Quest Link, Steam Link, Virtual Desktop, "

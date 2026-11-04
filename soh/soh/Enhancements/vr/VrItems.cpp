@@ -1,4 +1,5 @@
 #include "VrItems.h"
+#include "VrLauncher.h"
 #include "VrGame.h"
 #include "VrRuntime.h"
 
@@ -573,7 +574,7 @@ constexpr float kPanelDrop = 0.15f;    // and below eye level
 constexpr float kRepeatDelay = 0.4f;   // seconds a number row is held before it repeats
 constexpr float kRepeatInterval = 0.08f;
 
-enum class RowKind { Switch, Number, Choice, Recenter, Page, Close };
+enum class RowKind { Switch, Number, Choice, Recenter, Page, SwitchGame, Close };
 
 struct PanelRow {
     const char* label;
@@ -654,6 +655,7 @@ const PanelRow kMoreRows[] = {
     SwitchRow("STREAMER VIEW", CVAR_SETTING("VR.StreamerView")),
     NumberRow("TEXT SIZE", CVAR_SETTING("VR.TextSize"), 100, 50, 200, 10, "%"),
     NumberRow("TEXT OPACITY", CVAR_SETTING("VR.TextOpacity"), 100, 20, 100, 10, "%"),
+    ActionRow("PLAY MAJORA'S MASK", RowKind::SwitchGame),
     ActionRow("< FIRST PAGE", RowKind::Page),
     ActionRow("CLOSE", RowKind::Close),
 };
@@ -789,6 +791,10 @@ void ActivateRow(int row, float x, Hand hand) {
             sPanel.hovered = -1;
             sPanel.handRow[HAND_LEFT] = sPanel.handRow[HAND_RIGHT] = -1;
             sPanel.repeatHand = -1;
+            break;
+        case RowKind::SwitchGame:
+            ClosePanel();
+            SwitchToGame("mm");
             break;
         case RowKind::Close:
             ClosePanel();

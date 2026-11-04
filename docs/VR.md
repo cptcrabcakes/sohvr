@@ -21,6 +21,16 @@ Follow the Windows steps in [BUILDING.md](BUILDING.md); nothing extra is needed.
 
 On first launch, give the game your ROM when it asks, the same as in regular Ship of Harkinian. It makes `oot.o2r` from it.
 
+## The launcher
+
+`HarkinianVR.exe` starts either game, so there's one thing to open and one thing to add to Steam. It sits next to `soh.exe`.
+
+- It finds your ROMs by what's in them, whatever they're called, and looks next to itself, in a `roms` folder, a few folders up, and in any folder you add. It reads inside `.zip` files and handles `.z64`, `.n64` and `.v64`.
+- A game shown as needing setup takes one press: the launcher hands the ROM to that game, which extracts it as usual.
+- A ROM neither game can read is listed and says so. ROM hacks that change the game's code can't run on these engines; asset packs (`.o2r`) go in each game's mods folder, which the launcher opens for you.
+
+Inside the headset, you can swap games without taking it off: **PLAY MAJORA'S MASK** is on the last page of Ocarina of Time's VR settings panel, and the wheel's System ring has an ocarina that goes back from Majora's Mask. Each game has the same button in its menu, under Settings > VR.
+
 ## Turning VR on
 
 1. Start your headset's runtime (SteamVR, or the Quest Link or Air Link connection).

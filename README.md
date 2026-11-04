@@ -6,7 +6,7 @@
 
 HAS ONLY BEEN TESTED WITH IN STEAM VR A QUEST 3 ON STEAM AIR LINK
 
-How to build it, turn VR on and change its settings is in **[docs/VR.md](docs/VR.md)**.
+Open **HarkinianVR.exe** to play: it finds your ROMs and starts either game, and you can swap between them from inside the headset. How to build it, turn VR on and change its settings is in **[docs/VR.md](docs/VR.md)**.
 
 ## Why this one?
 
