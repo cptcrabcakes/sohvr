@@ -444,6 +444,26 @@ void BuildView(const Vec3& eye, const float orientation[4], MtxF& out) {
     out.mf[3][3] = 1.0f;
 }
 
+// The eye's two matrices. The renderer rounds every matrix it's given to 1/65536 (see Interpreter::GfxSpMatrix), and
+// a view matrix multiplies world coordinates, in the thousands, by its rotation, so that rounding alone moved the eyes
+// by millimeters from frame to frame, more the farther Link was from the world's middle. Distant scenery hid it, but
+// anything held close shook. So the rotation goes in with the projection, where it only ever multiplies what's near
+// the eye, and the view is left a plain translation, which rounding can't hurt. The renderer multiplies them back
+// together into the same thing.
+void BuildEyeMatrices(const Fov& fov, float zNear, float zFar, uint32_t width, uint32_t height, const Vec3& eye,
+                      const float orientation[4], MtxF& projection, MtxF& viewing) {
+    MtxF lens;
+    MtxF turn;
+    BuildProjection(fov, zNear, zFar, width, height, lens);
+    BuildView({ 0.0f, 0.0f, 0.0f }, orientation, turn);
+    MultiplyRows(turn, lens, projection);
+    memset(&viewing, 0, sizeof(viewing));
+    viewing.mf[0][0] = viewing.mf[1][1] = viewing.mf[2][2] = viewing.mf[3][3] = 1.0f;
+    viewing.mf[3][0] = -eye.x;
+    viewing.mf[3][1] = -eye.y;
+    viewing.mf[3][2] = -eye.z;
+}
+
 // A panel standing upright ahead of where the player looks, below eye level, facing them.
 Pose PanelInFront(float distance, float drop) {
     const Pose& head = Runtime::Get().GetHead();
@@ -842,8 +862,8 @@ void Game_AddEyeMatrices(int eye, float t, uint32_t width, uint32_t height,
         sRenderPrevAnchor.z + (sRender.anchor.z - sRenderPrevAnchor.z) * t,
     };
     Vec3 eyeWorld = ToWorld(view.pose.position, anchor, sRender.unitsPerMeter);
-    BuildProjection(view.fov, kNearPlane, sRender.zFar, width, height, replacements[sRender.projection]);
-    BuildView(eyeWorld, view.pose.orientation, replacements[sRender.viewing]);
+    BuildEyeMatrices(view.fov, kNearPlane, sRender.zFar, width, height, eyeWorld, view.pose.orientation,
+                     replacements[sRender.projection], replacements[sRender.viewing]);
     for (int i = 0; i < sRender.skyboxCount; i++) {
         MtxF centered = sRender.skyboxMatrix[i];
         centered.mf[3][0] = eyeWorld.x;

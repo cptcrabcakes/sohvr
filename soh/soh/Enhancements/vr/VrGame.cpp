@@ -2712,6 +2712,26 @@ void MultiplyRows(const MtxF& a, const MtxF& b, MtxF& out) {
     out = result;
 }
 
+// The eye's two matrices. The renderer rounds every matrix it's given to 1/65536 (see Interpreter::GfxSpMatrix), and
+// a view matrix multiplies world coordinates, in the thousands, by its rotation, so that rounding alone moved the eyes
+// by millimeters from frame to frame, more the farther Link was from the world's middle. Distant scenery hid it, but
+// anything held close shook. So the rotation goes in with the projection, where it only ever multiplies what's near
+// the eye, and the view is left a plain translation, which rounding can't hurt. The renderer multiplies them back
+// together into the same thing.
+void BuildEyeMatrices(const Fov& fov, float zNear, float zFar, uint32_t width, uint32_t height, const Vec3& eye,
+                      const float orientation[4], MtxF& projection, MtxF& viewing) {
+    MtxF lens;
+    MtxF turn;
+    BuildProjection(fov, zNear, zFar, width, height, lens);
+    BuildView({ 0.0f, 0.0f, 0.0f }, orientation, turn);
+    MultiplyRows(turn, lens, projection);
+    memset(&viewing, 0, sizeof(viewing));
+    viewing.mf[0][0] = viewing.mf[1][1] = viewing.mf[2][2] = viewing.mf[3][3] = 1.0f;
+    viewing.mf[3][0] = -eye.x;
+    viewing.mf[3][1] = -eye.y;
+    viewing.mf[3][2] = -eye.z;
+}
+
 // An item-get model held in one of Link's hands in place of the game's own in-hand model. Those models lie in the
 // plane of L = (-1, 0, 1)/sqrt2 and Y, so each item's points and directions are given in L, Y and
 // N = (1, 0, 1)/sqrt2, as measured from the models' own vertices.
@@ -4011,8 +4031,8 @@ void Game_AddEyeMatrices(int eye, float t, uint32_t width, uint32_t height,
     Vec3 eyeWorld = ToWorldAround(view.pose.position, anchor, sRender.unitsPerMeter,
                                   sCenter[0] - sRender.centerShift[0] * back, sCenter[1] - sRender.centerShift[1] * back);
 
-    BuildProjection(view.fov, kNearPlane, sRender.zFar, width, height, replacements[sRender.projection]);
-    BuildView(eyeWorld, view.pose.orientation, replacements[sRender.viewing]);
+    BuildEyeMatrices(view.fov, kNearPlane, sRender.zFar, width, height, eyeWorld, view.pose.orientation,
+                     replacements[sRender.projection], replacements[sRender.viewing]);
 
     // Link's body, drawn for the streamer view, isn't seen by the eyes: its matrices squash it to a point.
     for (Mtx* mtx : sRender.bodyMtx) {
@@ -4026,19 +4046,36 @@ void Game_AddEyeMatrices(int eye, float t, uint32_t width, uint32_t height,
     // The hands, moved from where their grips were when they were posed to where they are now (see RecordHand).
     for (int hand = 0; hand < 2 && !sRender.fromCamera; hand++) {
         const Pose& grip = Runtime::Get().GetController(sRender.handController[hand]).gripPose;
-        MtxF tickInverse;
-        if (!sRender.handPlaced[hand] || sRender.handMtx[hand].empty() || !grip.valid ||
-            SkinMatrix_Invert(&sRender.handGrip[hand], &tickInverse) != 0) {
+        if (!sRender.handPlaced[hand] || sRender.handMtx[hand].empty() || !grip.valid) {
             continue;
         }
+        const MtxF& tick = sRender.handGrip[hand];
         MtxF now = GripWorld(grip, anchor, sRender.unitsPerMeter, sCenter[0] - sRender.centerShift[0] * back,
                              sCenter[1] - sRender.centerShift[1] * back);
-        MtxF moved;
-        MultiplyRows(tickInverse, now, moved);
+        // How the grip has turned since the tick: its axes are a pure rotation, so undoing one is its transpose.
+        float turned[3][3];
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                turned[i][j] = tick.mf[0][i] * now.mf[0][j] + tick.mf[1][i] * now.mf[1][j] + tick.mf[2][i] * now.mf[2][j];
+            }
+        }
         for (Mtx* mtx : sRender.handMtx[hand]) {
             MtxF drawn;
             Matrix_MtxToMtxF(mtx, &drawn);
-            MultiplyRows(drawn, moved, replacements[mtx]);
+            // Worked out from the grip, not the world's middle: taking two large positions apart after turning them
+            // would lose the fraction that matters here.
+            float from[3] = { drawn.mf[3][0] - tick.mf[3][0], drawn.mf[3][1] - tick.mf[3][1],
+                              drawn.mf[3][2] - tick.mf[3][2] };
+            MtxF& placed = replacements[mtx];
+            for (int j = 0; j < 3; j++) {
+                for (int i = 0; i < 3; i++) {
+                    placed.mf[i][j] = drawn.mf[i][0] * turned[0][j] + drawn.mf[i][1] * turned[1][j] +
+                                      drawn.mf[i][2] * turned[2][j];
+                }
+                placed.mf[3][j] = now.mf[3][j] + from[0] * turned[0][j] + from[1] * turned[1][j] + from[2] * turned[2][j];
+            }
+            placed.mf[0][3] = placed.mf[1][3] = placed.mf[2][3] = 0.0f;
+            placed.mf[3][3] = 1.0f;
         }
     }
     sYaw = tickYaw;
