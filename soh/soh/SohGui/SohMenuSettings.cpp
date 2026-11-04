@@ -596,7 +596,7 @@ void SohMenu::AddMenuSettings() {
         .RaceDisable(false)
         .Options(CheckboxOptions().DefaultValue(true).Tooltip(
             "On ladders, vines and climbable walls, close a hand to hold on and pull to climb, hand over hand. "
-            "Hanging from a ledge, pull up to climb onto it or let go to drop. The stick climbs too."));
+            "Hanging from a ledge, pull up to climb onto it or let go to drop. The stick climbs too, as ever."));
     AddWidget(path, "VR Tutorials", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.Guidance"))
         .RaceDisable(false)
@@ -606,8 +606,9 @@ void SohMenu::AddMenuSettings() {
     AddWidget(path, "Grab Ladders to Climb Them", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.GrabToClimb"))
         .RaceDisable(false)
-        .Options(CheckboxOptions().DefaultValue(true).Tooltip(
-            "With Climb by Hand on, walking into a ladder or a climbable wall only climbs it while a hand grips."));
+        .Options(CheckboxOptions().DefaultValue(false).Tooltip(
+            "With Climb by Hand on, walking into a ladder or a climbable wall only climbs it while a hand grips. "
+            "Off, walking into one climbs on, as in the game."));
     AddWidget(path, "Swing Your Arms to Run", WIDGET_CVAR_CHECKBOX)
         .CVar(CVAR_SETTING("VR.ArmRun"))
         .RaceDisable(false)

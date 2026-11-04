@@ -3030,7 +3030,9 @@ s32 func_80834D2C(Player* this, PlayState* play) {
 }
 
 int func_80834E44(PlayState* play) {
-    return (play->shootingGalleryStatus > 0) && CHECK_BTN_ALL(sControlInput->press.button, BTN_B);
+    // In VR the next arrow is nocked by hand, in the gallery as anywhere else.
+    return (play->shootingGalleryStatus > 0) &&
+           (CHECK_BTN_ALL(sControlInput->press.button, BTN_B) || Vr_ItemButtonHeld(GET_PLAYER(play)));
 }
 
 int func_80834E7C(PlayState* play) {
@@ -3038,8 +3040,10 @@ int func_80834E7C(PlayState* play) {
     if (CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0) != 0) {
         buttonsToCheck |= BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT;
     }
+    // The gallery takes no item buttons, so VR's drawn bow counts here (see Vr_ItemButtonHeld).
     return (play->shootingGalleryStatus != 0) &&
-           ((play->shootingGalleryStatus < 0) || CHECK_BTN_ANY(sControlInput->cur.button, buttonsToCheck));
+           ((play->shootingGalleryStatus < 0) || CHECK_BTN_ANY(sControlInput->cur.button, buttonsToCheck) ||
+            Vr_ItemButtonHeld(GET_PLAYER(play)));
 }
 
 s32 func_80834EB8(Player* this, PlayState* play) {
@@ -3187,13 +3191,15 @@ s32 func_808351D4(Player* this, PlayState* play) {
                 if (!func_808350A4(play, this)) {
                     Player_PlaySfx(this, D_808543DC[ABS(this->unk_860) - 1]);
                 }
-            } else if (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) {
+            } else if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || Vr_IsWorldStereo()) {
+                // In VR a pull in the air fires too, instead of doing nothing.
                 func_808350A4(play, this);
             }
         }
         this->unk_834 = 10;
-        // In VR shooting doesn't stop Link, so shots on the move don't jerk the view to a halt.
-        if (!Vr_IsWorldStereo()) {
+        // In VR shooting doesn't stop Link, so shots on the move don't jerk the view to a halt. The hookshot still
+        // does: Link has to stand his ground while its hook is out (see Vr_OverridePads).
+        if (!Vr_IsWorldStereo() || Player_HoldsHookshot(this)) {
             Player_ZeroSpeedXZ(this);
         }
     } else {
@@ -3697,6 +3703,20 @@ int Player_CanUpdateItems(Player* this) {
             (Player_ItemToItemAction(this->heldItemId) == this->heldItemAction));
 }
 
+// The hook has caught something it pulls Link to.
+static void Player_StartHookshotFlight(PlayState* play, Player* this) {
+    Player_SetupAction(play, this, Player_Action_80850AEC, 1);
+    this->stateFlags3 |= PLAYER_STATE3_FLYING_WITH_HOOKSHOT;
+    Player_AnimPlayOnce(play, this, &gPlayerAnim_link_hook_fly_start);
+    Player_StartAnimMovement(play, this, 0x9B);
+    func_80832224(this);
+    this->yaw = this->actor.shape.rot.y;
+    this->actor.bgCheckFlags &= ~1;
+    this->hoverBootsTimer = 0;
+    this->unk_6AE_rotFlags |= UNK6AE_ROT_FOCUS_X | UNK6AE_ROT_FOCUS_Y | UNK6AE_ROT_UPPER_X;
+    Player_PlayVoiceSfx(this, NA_SE_VO_LI_LASH);
+}
+
 /**
  * Updates the Upper Body system.
  * The Upper Body system is composed of an upper action function and
@@ -3720,16 +3740,7 @@ s32 Player_UpdateUpperBody(Player* this, PlayState* play) {
         GameInteractor_Should(VB_PREVENT_HOOKSHOT_PARENT_SOFTLOCK,
                               !(this->stateFlags1 & PLAYER_STATE1_ON_HORSE) && Player_HoldsHookshot(this),
                               &this->actor.parent->id)) {
-        Player_SetupAction(play, this, Player_Action_80850AEC, 1);
-        this->stateFlags3 |= PLAYER_STATE3_FLYING_WITH_HOOKSHOT;
-        Player_AnimPlayOnce(play, this, &gPlayerAnim_link_hook_fly_start);
-        Player_StartAnimMovement(play, this, 0x9B);
-        func_80832224(this);
-        this->yaw = this->actor.shape.rot.y;
-        this->actor.bgCheckFlags &= ~1;
-        this->hoverBootsTimer = 0;
-        this->unk_6AE_rotFlags |= UNK6AE_ROT_FOCUS_X | UNK6AE_ROT_FOCUS_Y | UNK6AE_ROT_UPPER_X;
-        Player_PlayVoiceSfx(this, NA_SE_VO_LI_LASH);
+        Player_StartHookshotFlight(play, this);
         return true;
     }
 
@@ -12234,6 +12245,18 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         sUseHeldItem = sHeldItemButtonIsHeldDown = 0;
         sSavedCurrentMask = this->currentMask;
 
+        // Only actions that update the upper body notice the hook catching, and those are all the game needs: it roots
+        // Link while the hook is out. In VR he can be anywhere by then, and in an action that didn't look left the hook
+        // pulling at him for good, hanging in his falling pose with nothing to end it. So it's checked for every action.
+        if (Vr_IsWorldStereo() && (this->actor.parent != NULL) && (this->actor.parent->id == ACTOR_ARMS_HOOK) &&
+            (this->actionFunc != Player_Action_80850AEC) && Player_HoldsHookshot(this) &&
+            !(this->stateFlags1 & PLAYER_STATE1_ON_HORSE)) {
+            this->stateFlags1 &=
+                ~(PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE | PLAYER_STATE1_CLIMBING_LADDER);
+            this->actor.shape.yOffset = 0.0f;
+            Player_StartHookshotFlight(play, this);
+        }
+
         if (GameInteractor_Should(VB_EXECUTE_PLAYER_ACTION_FUNC, !(this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC),
                                   this, input)) {
             this->actionFunc(this, play);
@@ -15512,6 +15535,21 @@ void Player_Action_80850AEC(Player* this, PlayState* play) {
     f32 temp;
 
     this->stateFlags2 |= PLAYER_STATE2_DISABLE_ROTATION_Z_TARGET;
+
+    // Only the hook ends this flight, which ignores collision. In VR, if it's gone on far longer than any shot (the
+    // longshot's takes under 30 ticks), Link is let go, instead of flying on through the floor forever.
+    if (Vr_IsWorldStereo() && (++this->av2.actionVar2 > 120)) {
+        Actor* hook = Actor_Find(&play->actorCtx, ACTOR_ARMS_HOOK, ACTORCAT_ITEMACTION);
+
+        if (hook != NULL) {
+            hook->child = NULL;
+        }
+        this->actor.parent = NULL;
+        this->actor.world.rot.x = this->actor.shape.rot.x = 0;
+        this->actor.velocity.y = 0.0f;
+        func_80837B9C(this, play);
+        return;
+    }
 
     if (LinkAnimation_Update(play, &this->skelAnime)) {
         Player_AnimPlayLoop(play, this, &gPlayerAnim_link_hook_fly_wait);

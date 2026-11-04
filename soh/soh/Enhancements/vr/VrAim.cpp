@@ -107,6 +107,49 @@ void DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float r
     }
 }
 
+// The Lens of Truth's window. Vertices are whole numbers, with the glass's edge this far out; the rest of the mask is
+// a bowl around the player that reaches thirty times as far, past where the eyes can be from the glass (the near
+// part of a plane alone isn't enough: looking across the glass, part of the view never meets its plane).
+constexpr int kLensSegments = 32;
+constexpr float kGlassVertexRadius = 1000.0f;
+constexpr float kBowlVertexSize = 30000.0f;
+
+void SetLensVertex(Vtx& v, float x, float y, float z) {
+    v = {};
+    v.v.ob[0] = static_cast<s16>(lroundf(x));
+    v.v.ob[1] = static_cast<s16>(lroundf(y));
+    v.v.ob[2] = static_cast<s16>(lroundf(z));
+    v.v.cn[3] = 255;
+}
+
+// The current matrix at the glass, its Z along normal, with whole-number vertices in thousandths of its radius.
+void PutLens(GraphicsContext* gfxCtx, Gfx*& xlu, const Vec3f& center, const Vec3f& normal, float radius) {
+    Vec3f z = Unit(normal);
+    Vec3f x = Unit(Cross(fabsf(z.y) < 0.9f ? Vec3f{ 0.0f, 1.0f, 0.0f } : Vec3f{ 1.0f, 0.0f, 0.0f }, z));
+    Vec3f y = Cross(z, x);
+    float scale = radius * kVertexScale / kGlassVertexRadius;
+    PutBasis(gfxCtx, xlu, center, { x.x * scale, x.y * scale, x.z * scale }, { y.x * scale, y.y * scale, y.z * scale },
+             { z.x * scale, z.y * scale, z.z * scale });
+}
+
+void DrawLensDisc(GraphicsContext* gfxCtx, Gfx*& xlu) {
+    Vtx* vertices = static_cast<Vtx*>(Graph_Alloc(gfxCtx, sizeof(Vtx) * (kLensSegments + 1)));
+    SetLensVertex(vertices[0], 0.0f, 0.0f, 0.0f);
+    for (int i = 0; i < kLensSegments; i++) {
+        float angle = 2.0f * static_cast<float>(M_PI) * i / kLensSegments;
+        SetLensVertex(vertices[i + 1], kGlassVertexRadius * cosf(angle), kGlassVertexRadius * sinf(angle), 0.0f);
+    }
+    // Loaded in runs that all share the middle.
+    for (int i = 0; i < kLensSegments; i++) {
+        Vtx* run = static_cast<Vtx*>(Graph_Alloc(gfxCtx, sizeof(Vtx) * 3));
+        run[0] = vertices[0];
+        run[1] = vertices[i + 1];
+        run[2] = vertices[(i + 1) % kLensSegments + 1];
+        gSPVertex(xlu++, reinterpret_cast<uintptr_t>(run), 3, 0);
+        gSP1Triangle(xlu++, 0, 1, 2, 0);
+    }
+}
+
 // A flat strip from one point to another, turned to face the eye (game units wide).
 void DrawBeam(PlayState* play, const Vec3f& from, const Vec3f& to, float width, Color_RGBA8 color) {
     GraphicsContext* gfxCtx = play->state.gfxCtx;
@@ -242,6 +285,67 @@ void Aim_DrawArrow(PlayState* play, const Vec3f& tail, const Vec3f& tip, float w
     Vec3f neck = { tail.x + (tip.x - tail.x) * 0.9f, tail.y + (tip.y - tail.y) * 0.9f, tail.z + (tip.z - tail.z) * 0.9f };
     DrawBeam(play, tail, neck, width, { 150, 105, 60, 255 });
     DrawBeam(play, neck, tip, width * 1.8f, { 200, 200, 210, 255 });
+}
+
+void Aim_DrawLensMask(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, const Vec3f& eyes,
+                      bool showInside) {
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx*& xlu = gfxCtx->polyXlu.p;
+    // The mask's Z comes toward the eyes, so the bowl closes around them.
+    Vec3f toEyes = { eyes.x - center.x, eyes.y - center.y, eyes.z - center.z };
+    bool facing = toEyes.x * normal.x + toEyes.y * normal.y + toEyes.z * normal.z >= 0.0f;
+    Vec3f z = facing ? normal : Vec3f{ -normal.x, -normal.y, -normal.z };
+
+    gDPPipeSync(xlu++);
+    gSPTexture(xlu++, 0, 0, 0, G_TX_RENDERTILE, G_OFF);
+    gSPClearGeometryMode(xlu++, G_LIGHTING | G_CULL_BOTH | G_TEXTURE_GEN | G_FOG);
+    gDPSetCombineMode(xlu++, G_CC_PRIMITIVE, G_CC_PRIMITIVE);
+    // Nothing to see, only the nearest depth written, over whatever was there.
+    gDPSetOtherMode(xlu++,
+                    G_AD_DISABLE | G_CD_MAGICSQ | G_CK_NONE | G_TC_FILT | G_TF_BILERP | G_TT_NONE | G_TL_TILE |
+                        G_TD_CLAMP | G_TP_NONE | G_CYC_1CYCLE | G_PM_NPRIMITIVE,
+                    G_AC_NONE | G_ZS_PRIM | Z_UPD | G_RM_CLD_SURF | G_RM_CLD_SURF2);
+    gDPSetPrimColor(xlu++, 0, 0, 0, 0, 0, 0);
+    gDPSetPrimDepth(xlu++, 0, 0);
+    PutLens(gfxCtx, xlu, center, z, radius);
+
+    if (showInside) {
+        // Around the glass, out to the bowl's rim, back past the eyes, and closed behind them, in runs of seven
+        // vertices.
+        Vtx* vertices = static_cast<Vtx*>(Graph_Alloc(gfxCtx, sizeof(Vtx) * kLensSegments * 7));
+        for (int i = 0; i < kLensSegments; i++) {
+            float angle0 = 2.0f * static_cast<float>(M_PI) * i / kLensSegments;
+            float angle1 = 2.0f * static_cast<float>(M_PI) * (i + 1) / kLensSegments;
+            float c0 = cosf(angle0);
+            float s0 = sinf(angle0);
+            float c1 = cosf(angle1);
+            float s1 = sinf(angle1);
+            Vtx* run = vertices + i * 7;
+            SetLensVertex(run[0], kGlassVertexRadius * c0, kGlassVertexRadius * s0, 0.0f);
+            SetLensVertex(run[1], kGlassVertexRadius * c1, kGlassVertexRadius * s1, 0.0f);
+            SetLensVertex(run[2], kBowlVertexSize * c0, kBowlVertexSize * s0, 0.0f);
+            SetLensVertex(run[3], kBowlVertexSize * c1, kBowlVertexSize * s1, 0.0f);
+            SetLensVertex(run[4], kBowlVertexSize * c0, kBowlVertexSize * s0, kBowlVertexSize);
+            SetLensVertex(run[5], kBowlVertexSize * c1, kBowlVertexSize * s1, kBowlVertexSize);
+            SetLensVertex(run[6], 0.0f, 0.0f, kBowlVertexSize);
+            gSPVertex(xlu++, reinterpret_cast<uintptr_t>(run), 7, 0);
+            gSP2Triangles(xlu++, 0, 2, 1, 0, 1, 2, 3, 0);
+            gSP2Triangles(xlu++, 2, 4, 3, 0, 3, 4, 5, 0);
+            gSP1Triangle(xlu++, 4, 6, 5, 0);
+        }
+    } else {
+        DrawLensDisc(gfxCtx, xlu);
+    }
+    gDPPipeSync(xlu++);
+    gDPSetDepthSource(xlu++, G_ZS_PIXEL);
+}
+
+void Aim_DrawLensGlass(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, Color_RGBA8 color) {
+    GraphicsContext* gfxCtx = play->state.gfxCtx;
+    Gfx*& xlu = gfxCtx->polyXlu.p;
+    SetupFlat(xlu, color);
+    PutLens(gfxCtx, xlu, center, normal, radius);
+    DrawLensDisc(gfxCtx, xlu);
 }
 
 void Aim_DrawRing(PlayState* play, const Vec3f& center, const Vec3f& normal, float radius, float width,

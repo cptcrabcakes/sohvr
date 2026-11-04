@@ -871,6 +871,10 @@ void Game_CutOverlay(bool cut) {
     }
 }
 
+std::string Game_Where() {
+    return gPlayState != nullptr ? fmt::format("scene {}", static_cast<int>(gPlayState->sceneId)) : "not playing";
+}
+
 bool Game_StreamerView() {
     return false;
 }

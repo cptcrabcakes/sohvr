@@ -799,6 +799,17 @@ void GetItem_DrawOpa0Xlu1(PlayState* play, s16 drawId) {
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+// VR: the model's glass is too cloudy to see through, and the lens in the hand is looked through (see Vr_DrawLensMask).
+void GetItem_DrawLensFrame(PlayState* play) {
+    OPEN_DISPS(play->state.gfxCtx);
+
+    Gfx_SetupDL_25Opa(play->state.gfxCtx);
+    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_MODELVIEW | G_MTX_LOAD);
+    gSPDisplayList(POLY_OPA_DISP++, sDrawItemTable[GID_LENS].dlists[0]);
+
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
 void GetItem_DrawGenericMusicNote(PlayState* play, s16 drawId) {
     s32 pad;
     s16 color_slot = drawId - 120; // 0 = generic

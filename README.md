@@ -48,13 +48,14 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | - | - |
 | Draw or put away the sword | Reach over your sword hand's shoulder and squeeze the grip |
 | Take out or put away the shield | Reach over your other shoulder and squeeze the grip. The sword and shield come out separately, so you can hold just one. |
+| Put away the bow, slingshot, hookshot or boomerang | Reach over the shield's shoulder and squeeze, or over the sword's to swap straight to the sword. |
 | Attack | Swing the sword: sideways, overhead or thrusting, which enemies react to. Swing hard, or down from a jump, for a jump attack's damage. The blade sparks against walls and clashes with other blades, and the hammer shakes the ground. |
 | Spin attack | Hold your sword hand's trigger to charge, let go to spin; or turn around for real with the sword held out |
 | Block | Hold the shield where the attack is coming from |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both. |
 | Throw | Swing and let go of the grip; a slow release sets it down. Carried in both hands, let go of both together to throw with both. |
-| Climb | Grab a ladder, vine or climbable wall to climb onto it. Close a hand to hold on and pull down to climb, hand over hand; pull sideways to move along a wall. Hanging from a ledge, pull up to climb onto it, or let go to drop. Where A says Climb, grab the ledge with both hands and pull. |
+| Climb | Walk into a ladder, vine or climbable wall to climb onto it, and use the stick as usual. Or close a hand to hold on and pull down to climb, hand over hand; pull sideways to move along a wall. Hanging from a ledge, pull up to climb onto it, or let go to drop. Grab Ladders to Climb Them makes a hand on the rungs the only way on. |
 | Run faster | Swing your arms as you walk with the stick |
 | Swim | Pull both hands back, breaststroke style, to swim the way you look; the stick swims too |
 | Crawl into a crawlspace | Get down for real in front of it |
@@ -66,7 +67,7 @@ The first ring's groups, clockwise from the top. Each shows the first thing in i
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire. Its laser turns green where it will hook, and the hook itself flies off the end on its chain. |
 | Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
 | Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
-| See through the Lens of Truth | Take it from the wheel and hold it up to your eye: fake walls vanish and hidden things appear wherever you look. Squeeze that hand's grip away from your face to put it away. |
+| See through the Lens of Truth | Take it from the wheel, hold it up and look through the glass: hidden things only show through it, and fake walls vanish behind it, as a real window would. It spends magic only while you look through it. Reach over your shoulder and squeeze to put it away. |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |

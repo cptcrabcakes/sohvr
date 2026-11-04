@@ -141,6 +141,11 @@ u8 Vr_TakeBottleContent(void);
 Actor* Vr_TakeBottleCatch(void);
 // Draws what VR adds around Link, such as the belt menu. Called at the end of Player_Draw.
 void Vr_DrawPlayerExtras(PlayState* play);
+// Draws the Lens of Truth's window into the depth buffer, in the world, so that what's drawn after it is only seen
+// through the glass held in the hand (showInside) or only around it. False if no lens is in hand.
+bool Vr_DrawLensMask(PlayState* play, bool showInside);
+// The lens's frame and handle, without the model's glass, at the current matrix.
+void GetItem_DrawLensFrame(PlayState* play);
 // Whether items should draw their full item-get models instead of their flat or first-person ones.
 bool Vr_UseVendorModels(void);
 

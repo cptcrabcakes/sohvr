@@ -115,6 +115,8 @@ class Runtime {
     uint32_t GetHudHeight() const;
     // Display refresh rate in Hz, or 0 if the runtime doesn't report one.
     uint32_t GetRefreshRate() const;
+    // How many display refreshes went by without a frame of ours since this was last asked.
+    uint32_t TakeMissedFrames();
 
   private:
     Runtime() = default;

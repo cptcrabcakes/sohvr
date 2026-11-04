@@ -10,8 +10,10 @@
 #include <climits>
 #include <cmath>
 #include <cstring>
+#include <condition_variable>
 #include <mutex>
 #include <string>
+#include <thread>
 
 #include <libultraship/libultra/controller.h>
 
@@ -115,7 +117,7 @@ std::atomic<bool> sBlowing{ false };
 float sBlowFor = 0.0f;  // seconds of blowing heard so far
 float sQuietFor = 0.0f; // seconds since it was last heard
 
-SDL_AudioDeviceID sDevice = 0;
+std::atomic<SDL_AudioDeviceID> sDevice{ 0 };
 bool sSdlAudioStarted = false;
 std::chrono::steady_clock::time_point sLastWanted;
 
@@ -353,18 +355,18 @@ void Open() {
     SDL_AudioSpec have = {};
     std::string device = PickDevice();
     sTracker = Tracker();
-    sDevice = SDL_OpenAudioDevice(device.empty() ? nullptr : device.c_str(), 1, &want, &have, 0);
-    if (sDevice == 0) {
+    SDL_AudioDeviceID opened = SDL_OpenAudioDevice(device.empty() ? nullptr : device.c_str(), 1, &want, &have, 0);
+    if (opened == 0) {
         SPDLOG_ERROR("[VR] The microphone can't listen: none opened ({})", SDL_GetError());
         return;
     }
-    SDL_PauseAudioDevice(sDevice, 0);
+    SDL_PauseAudioDevice(opened, 0);
+    sDevice.store(opened);
     SPDLOG_INFO("[VR] Listening to {}", device.empty() ? "the default microphone" : device);
 }
 
 void Close() {
-    SDL_CloseAudioDevice(sDevice);
-    sDevice = 0;
+    SDL_CloseAudioDevice(sDevice.exchange(0));
     sButton.store(0);
     sBend.store(0.0f);
     sBlowing.store(false);
@@ -372,7 +374,39 @@ void Close() {
     SPDLOG_INFO("[VR] The microphone stopped listening");
 }
 
-bool sOpenFailed = false;
+// Opening and closing an audio device can take the system a good part of a second, which on the game's thread froze
+// the headset each time the ocarina came out and each time it went away, so they happen on a thread of their own.
+std::mutex sWorkerMutex;
+std::condition_variable sWorkerWake;
+bool sWorkerStarted = false;
+bool sWanted = false;                 // what the game asks for, under the mutex
+std::atomic<bool> sOpenFailed{ false }; // tried once per time listening is turned on
+
+void Worker() {
+    std::unique_lock<std::mutex> lock(sWorkerMutex);
+    while (true) {
+        sWorkerWake.wait(lock, [] { return sWanted != (sDevice.load() != 0) && !(sWanted && sOpenFailed.load()); });
+        bool open = sWanted;
+        lock.unlock();
+        if (open) {
+            Open();
+            sOpenFailed.store(sDevice.load() == 0);
+        } else {
+            Close();
+        }
+        lock.lock();
+    }
+}
+
+void SetWanted(bool wanted) {
+    std::lock_guard<std::mutex> lock(sWorkerMutex);
+    if (!sWorkerStarted) {
+        sWorkerStarted = true;
+        std::thread(Worker).detach();
+    }
+    sWanted = wanted;
+    sWorkerWake.notify_one();
+}
 
 } // namespace
 
@@ -380,22 +414,23 @@ void OcarinaMic_Listen(bool on) {
     auto now = std::chrono::steady_clock::now();
     if (on) {
         sLastWanted = now;
-        if (sDevice == 0 && !sOpenFailed) {
-            Open();
-            // Tried once per time listening is turned on, so a missing microphone isn't retried every frame.
-            sOpenFailed = sDevice == 0;
+        if (sDevice.load() == 0 && !sOpenFailed.load()) {
+            SetWanted(true);
         }
         return;
     }
-    sOpenFailed = false;
-    if (sDevice != 0 && std::chrono::duration<float>(now - sLastWanted).count() > kCloseAfter) {
-        Close();
+    // A failed open is wanted no more, and can be tried again next time.
+    if (sOpenFailed.exchange(false)) {
+        SetWanted(false);
+    }
+    if (sDevice.load() != 0 && std::chrono::duration<float>(now - sLastWanted).count() > kCloseAfter) {
+        SetWanted(false);
     }
 }
 
 MicNote OcarinaMic_Current() {
     MicNote note;
-    note.listening = sDevice != 0;
+    note.listening = sDevice.load() != 0;
     if (note.listening) {
         note.button = sButton.load();
         note.bend = sBend.load();

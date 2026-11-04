@@ -8,6 +8,7 @@
 #include "z64math.h"
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -31,6 +32,8 @@ void Game_CutOverlay(bool cut);
 // The overlay's display list, for drawing the HUD on its own.
 Gfx* Game_Overlay();
 // Whether the desktop window shows the game from its own camera (the streamer view). Not yet for Majora's Mask.
+// Where the player is, for the frame timing's log.
+std::string Game_Where();
 bool Game_StreamerView();
 void Game_AddStreamerMatrices(float t, uint32_t width, uint32_t height, std::unordered_map<Mtx*, MtxF>& replacements);
 // The pieces of the HUD to show in the room.

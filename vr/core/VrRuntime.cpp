@@ -180,6 +180,8 @@ struct Runtime::Impl {
     Pose head;
     std::array<ControllerState, HAND_COUNT> controllers;
     uint32_t refreshRate = 0;
+    XrTime lastDisplayTime = 0;
+    uint32_t missedFrames = 0;
 
     XrActionSet actionSet = XR_NULL_HANDLE;
     XrPath handPaths[HAND_COUNT] = {};
@@ -847,6 +849,12 @@ bool Runtime::BeginFrame() {
     if (mImpl->frameState.predictedDisplayPeriod > 0) {
         mImpl->refreshRate =
             static_cast<uint32_t>(lround(1.0e9 / static_cast<double>(mImpl->frameState.predictedDisplayPeriod)));
+        if (mImpl->lastDisplayTime != 0) {
+            int64_t periods = llround(static_cast<double>(mImpl->frameState.predictedDisplayTime - mImpl->lastDisplayTime) /
+                                      static_cast<double>(mImpl->frameState.predictedDisplayPeriod));
+            mImpl->missedFrames += static_cast<uint32_t>(std::max<int64_t>(periods - 1, 0));
+        }
+        mImpl->lastDisplayTime = mImpl->frameState.predictedDisplayTime;
     }
     mImpl->UpdateInput(mImpl->frameState.predictedDisplayTime);
     if (mImpl->frameState.shouldRender) {
@@ -1046,6 +1054,15 @@ uint32_t Runtime::GetRefreshRate() const {
     return IsInitialized() ? mImpl->refreshRate : 0;
 }
 
+uint32_t Runtime::TakeMissedFrames() {
+    if (!IsInitialized()) {
+        return 0;
+    }
+    uint32_t missed = mImpl->missedFrames;
+    mImpl->missedFrames = 0;
+    return missed;
+}
+
 } // namespace SohVr
 
 #else
@@ -1080,6 +1097,9 @@ bool Runtime::IsSessionRunning() const {
     return false;
 }
 void Runtime::PollEvents() {
+}
+uint32_t Runtime::TakeMissedFrames() {
+    return 0;
 }
 bool Runtime::BeginFrame() {
     return false;

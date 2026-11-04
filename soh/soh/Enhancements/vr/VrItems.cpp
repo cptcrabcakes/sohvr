@@ -636,7 +636,7 @@ const PanelRow kPlayRows[] = {
     SwitchRow("GRAB DROPS", CVAR_SETTING("VR.GrabDrops")),
     OnRow("WHISTLE NOTES", CVAR_SETTING("VR.MicOcarina")),
     OnRow("CLIMB BY HAND", CVAR_SETTING("VR.ClimbByHand")),
-    OnRow("GRAB LADDERS", CVAR_SETTING("VR.GrabToClimb")),
+    SwitchRow("GRAB LADDERS", CVAR_SETTING("VR.GrabToClimb")),
     OnRow("ARMS TO RUN", CVAR_SETTING("VR.ArmRun")),
     OnRow("ARMS TO SWIM", CVAR_SETTING("VR.SwimStrokes")),
     OnRow("NOD TO ANSWER", CVAR_SETTING("VR.HeadAnswers")),

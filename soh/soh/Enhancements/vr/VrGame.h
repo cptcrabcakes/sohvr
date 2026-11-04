@@ -7,6 +7,7 @@
 #include "include/z64math.h"
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -46,6 +47,8 @@ bool Controls_ActionHeld(VrAction action);
 void Controls_StartBinding(VrAction action);
 
 // Whether the desktop window shows the game from its own camera (the streamer view) instead of the left eye.
+// Where the player is, for the frame timing's log.
+std::string Game_Where();
 bool Game_StreamerView();
 // Adds the streamer view's camera to the frame's matrix replacements, for a window of this size. t is the
 // interpolation step of the frame.

@@ -272,15 +272,97 @@ bool UpdateRuntime(Fast::Interpreter* intp) {
 
 } // namespace
 
+namespace {
+
+// Where the time of each frame goes, logged for any frame that takes long enough to feel and, every few seconds, as
+// totals, to tell a hitch in the game from one in the drawing, and an area that can't keep up with the headset.
+using Clock = std::chrono::steady_clock;
+
+constexpr float kHitchMs = 40.0f;
+constexpr float kSummarySeconds = 5.0f;
+
+float Ms(Clock::time_point from, Clock::time_point to) {
+    return std::chrono::duration<float, std::milli>(to - from).count();
+}
+
+struct FrameTimes {
+    float game = 0.0f;  // between the end of the last frame and the start of this one: the game's tick
+    float setup = 0.0f; // input and the game's per-frame VR work, after the wait for the headset
+    float eyes[2] = {}; // interpreting and drawing each eye; the first also uploads what's new
+    float hud = 0.0f;   // the streamer view and the HUD's passes
+    float end = 0.0f;   // handing the frame over, the window and the rest
+};
+
+struct FrameTotals {
+    uint32_t frames = 0;
+    float work = 0.0f;
+    float worst = 0.0f;
+    float eyes[2] = {};
+    float hud = 0.0f;
+    float game = 0.0f;
+    float end = 0.0f;
+};
+
+Clock::time_point sLastFrameEnd;
+Clock::time_point sTotalsStart;
+FrameTotals sTotals;
+
+void RecordFrame(const FrameTimes& times) {
+    float work = times.setup + times.eyes[0] + times.eyes[1] + times.hud + times.end;
+    if (times.game > kHitchMs || work > kHitchMs) {
+        SPDLOG_INFO("[VR] Slow frame: game {:.0f} ms, setup {:.0f}, left eye {:.0f}, right eye {:.0f}, HUD {:.0f}, "
+                    "end {:.0f}",
+                    times.game, times.setup, times.eyes[0], times.eyes[1], times.hud, times.end);
+    }
+    sTotals.frames++;
+    sTotals.work += work;
+    sTotals.worst = std::max(sTotals.worst, work);
+    sTotals.eyes[0] += times.eyes[0];
+    sTotals.eyes[1] += times.eyes[1];
+    sTotals.hud += times.hud;
+    sTotals.game += times.game;
+    sTotals.end += times.end;
+    auto now = Clock::now();
+    if (sTotalsStart == Clock::time_point{}) {
+        sTotalsStart = now;
+    }
+    float seconds = Ms(sTotalsStart, now) / 1000.0f;
+    if (seconds >= kSummarySeconds) {
+        float frames = static_cast<float>(sTotals.frames);
+        uint32_t refresh = Runtime::Get().GetRefreshRate();
+        uint32_t missed = Runtime::Get().TakeMissedFrames();
+        SPDLOG_INFO("[VR] {:.0f} fps of {} Hz, {} refreshes missed; {:.1f} ms a frame (budget {:.1f}, worst {:.1f}): "
+                    "left eye {:.1f}, right eye {:.1f}, HUD {:.1f}, end {:.1f}; game {:.1f}; {}",
+                    frames / seconds, refresh, missed, sTotals.work / frames, refresh > 0 ? 1000.0f / refresh : 0.0f,
+                    sTotals.worst, sTotals.eyes[0] / frames, sTotals.eyes[1] / frames, sTotals.hud / frames,
+                    sTotals.end / frames, sTotals.game / frames, Game_Where());
+        sTotals = {};
+        sTotalsStart = now;
+    }
+}
+
+} // namespace
+
 bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtxReplacements) {
     std::shared_ptr<Fast::Interpreter> intp = wnd->GetInterpreterWeak().lock();
     if (intp == nullptr || !UpdateRuntime(intp.get())) {
         return false;
     }
+    FrameTimes times;
+    Clock::time_point frameStart = Clock::now();
+    if (sLastFrameEnd != Clock::time_point{}) {
+        times.game = Ms(sLastFrameEnd, frameStart);
+    }
     Runtime& runtime = Runtime::Get();
     if (!runtime.BeginFrame()) {
         return false;
     }
+    Clock::time_point mark = Clock::now();
+    auto lap = [&mark](float& into) {
+        Clock::time_point now = Clock::now();
+        into += Ms(mark, now);
+        mark = now;
+    };
     Game_OnFrame();
 
     auto gui = wnd->GetGui();
@@ -290,6 +372,7 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
     bool stereo = Game_RenderStereo();
     bool mirrored = false;
     bool streamed = false;
+    lap(times.setup);
     if (!runtime.ShouldRender()) {
         // The headset isn't showing this app; keep the window drawing as usual.
         intp->StartFrame();
@@ -308,6 +391,7 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
             if (eye == 0) {
                 mirrored = CopyToMirror(intp.get(), runtime.GetEyes()[0].fov);
             }
+            lap(times.eyes[eye]);
         }
         Game_CutOverlay(false);
         // The streamer view: the window shows the game from its own camera, with Link and the HUD, while the headset
@@ -324,6 +408,7 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
         if (splitHud) {
             DrawHud(intp.get(), mtxReplacements);
         }
+        lap(times.hud);
     } else {
         SetRenderSize(intp.get(), runtime.GetScreenWidth(), runtime.GetScreenHeight());
         intp->Run(commands, mtxReplacements);
@@ -344,6 +429,9 @@ bool DrawFrame(Fast::Fast3dWindow* wnd, Gfx* commands, const std::unordered_map<
     intp->mRapi->EndFrame();
     PresentWindow(intp.get());
     intp->mRapi->FinishRender();
+    lap(times.end);
+    RecordFrame(times);
+    sLastFrameEnd = Clock::now();
     return true;
 }
 

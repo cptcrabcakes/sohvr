@@ -57,8 +57,8 @@ const std::unordered_map<uint16_t, Guide> kGuides = {
                             "waste them." } },
     { 0x0038, { ITEM_HAMMER, "You found the %rMegaton Hammer%w!^%ySwing it%w to smash junk, with your other hand on "
                              "the handle too. Bring it down on the ground to shake it!" } },
-    { 0x0039, { ITEM_LENS, "You found the %rLens of Truth%w!^Take it from the %yitem wheel (Y)%w and %yhold it up to "
-                           "your eye%w to see what's hidden. It spends magic only while it's there." } },
+    { 0x0039, { ITEM_LENS, "You found the %rLens of Truth%w!^Take it from the %yitem wheel (Y)%w and %ylook through its "
+                           "glass%w to see what's hidden. It spends magic only while you do." } },
     { 0x0042, { ITEM_BOTTLE, "You got an %rEmpty Bottle%w!^Take it from the %yitem wheel (Y)%w and %yswing it "
                              "through%w a bug, a fish, a fairy or blue fire to catch it." } },
     { 0x0043, { ITEM_POTION_RED, "You got a %rRed Potion%w!^Take it from the %yitem wheel (Y)%w and %ytip it at your "

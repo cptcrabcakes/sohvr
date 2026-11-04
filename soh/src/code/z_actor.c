@@ -2872,13 +2872,27 @@ void Actor_DrawLensActors(PlayState* play, s32 numInvisibleActors, Actor** invis
 
     gfxCtx = play->state.gfxCtx;
 
-    // In VR the lens is held up to the eyes, so the whole view is seen through it instead of a circle in the middle
-    // of the screen: what it hides is gone and what it shows is there, wherever the player looks.
+    // In VR the lens is looked through where it's held, so the game's circle in the middle of the screen is a window
+    // at the glass instead, in the depth buffer as ever, but drawn in the world, so each eye sees it in its own place.
+    // What's drawn after it needs to come after it, so these actors' opaque parts, which the game leaves to fall where
+    // they may, are skipped over in the opaque list and called from the see-through one.
     if (Vr_IsWorldStereo()) {
-        if (play->roomCtx.curRoom.lensMode == LENS_MODE_HIDE_ACTORS) {
+        s32 showInside = play->roomCtx.curRoom.lensMode == LENS_MODE_HIDE_ACTORS;
+
+        if (Vr_DrawLensMask(play, showInside) || showInside) {
+            OPEN_DISPS(gfxCtx);
+
+            Gfx* skip = POLY_OPA_DISP++;
+            Gfx* opaque = POLY_OPA_DISP;
+
             for (i = 0; i < numInvisibleActors; i++) {
                 Actor_Draw(play, invisibleActors[i]);
             }
+            gSPEndDisplayList(POLY_OPA_DISP++);
+            Graph_BranchDlist(skip, POLY_OPA_DISP);
+            gSPDisplayList(POLY_XLU_DISP++, opaque);
+
+            CLOSE_DISPS(gfxCtx);
         }
         return;
     }

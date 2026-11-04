@@ -77,13 +77,14 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | - | - |
 | Draw or put away the sword | Reach over your sword hand's shoulder and squeeze the grip |
 | Take out or put away the shield | Reach over your other shoulder and squeeze the grip. The sword and shield come out separately, so you can hold just one. |
+| Put away the bow, slingshot, hookshot or boomerang | Reach over the shield's shoulder and squeeze, or over the sword's to swap straight to the sword. |
 | Attack | Swing the sword. Sideways, overhead and thrusting swings are the game's horizontal, vertical and stab attacks, which enemies that guard or dodge react to, and a downward swing in the air or a very hard swing hits as hard as a jump attack. Your blade rings and sparks off shields and other blades, and pushes enemies aside when it's moved slowly through them. A blade swung into a wall or the floor sparks and stops, which wears out the Deku stick and Biggoron's Sword as the game's own hits do, and the Megaton Hammer swung into the ground shakes it, which some switches answer to. |
 | Spin attack | Hold your sword hand's trigger to charge, and let go to spin: the sword sweeps around you. Or turn around for real, most of the way, with the sword held out. |
 | Block | Hold the shield where the attack is coming from |
 | Take an item, tunic, boots or shield | Press Y. Touch or point at it in the ring that opens, and squeeze the grip or pull the trigger. Picking a group opens its own ring, and the middle of a ring goes back. The item goes into the hand that picked it. The first ring's groups: Ranged & Tools, Explosives & Heavy, Magic & Spells (with the magic arrows), Bottles & Consumables, Quest & Lore, Equipment & Gear, and System (the ship). |
 | Pick up a drop | Walk into it, or with Pick Up Drops by Hand on, close a hand on it |
 | Lift a pot, rock, bush, bomb or bomb flower | Close a hand on it. Close your other hand on it too to carry it in both; let go with one and the other keeps it. |
-| Climb | Walking into a ladder, vine or climbable wall climbs onto it while a hand grips (Grab Ladders to Climb Them). On it, close a hand to hold on and pull down to climb, hand over hand: reach up with one hand while the other pulls. Push down to climb down, and pull sideways to move along a wall. Hanging from a ledge, pull up with a hand that holds on to climb onto it, or let go of it to drop. Where A says Climb, grab the ledge with both hands and pull. The stick climbs too; Climb by Hand turns this off. |
+| Climb | Walk into a ladder, vine or climbable wall to climb onto it, and use the stick as usual. Or close a hand to hold on and pull down to climb, hand over hand; pull sideways to move along a wall. Hanging from a ledge, pull up to climb onto it, or let go to drop. Grab Ladders to Climb Them makes a hand on the rungs the only way on. |
 | Run faster | Swing your arms, one up as the other goes down, while you walk with the stick: up to a quarter faster (Swing Your Arms to Run) |
 | Swim | Pull both hands back, breaststroke style, to swim the way you look; the stick swims too |
 | Crawl into a crawlspace | Get down for real in front of it |
@@ -96,7 +97,7 @@ The title screen's cutscene plays around you in 3D, seen from its own camera as 
 | Fire the hookshot | Point, pull the trigger to aim, let go to fire. A laser shows where it would catch: green where it will hook, red where it would bounce off. The hook leaves the hookshot and flies on its chain, and goes back on when it returns. |
 | Throw the boomerang | Swing and let go of the grip; reach out to catch it in that hand on its way back |
 | Cast a spell | Take Din's Fire, Farore's Wind or Nayru's Love from the wheel; it glows between your hands. Hold both triggers to cast it, or let go first to cast nothing. |
-| See through the Lens of Truth | Take it from the wheel and hold it up to your eye: everything you see is through it, so fake walls vanish and hidden things appear wherever you look. It's on, spending magic, only while it's there. Squeeze that hand's grip away from your face to put it away. |
+| See through the Lens of Truth | Take it from the wheel, hold it up and look through the glass: hidden things only show through it, and fake walls vanish behind it, as a real window would. It spends magic only while you look through it. Reach over your shoulder and squeeze to put it away. |
 | Use two-handed weapons | Close your other hand on the handle of the Deku stick, hammer or Biggoron's Sword |
 | Use a bottle | Tip it over; at your mouth for potions and milk, anywhere for fairies and the rest. Swing an empty bottle through a bug, fish, fairy or blue fire to catch it. |
 | Put on or take off a mask | Hold the mask to your face, or close a hand at your face to take it off |

@@ -475,12 +475,27 @@ void ShiftCenter(float dx, float dz) {
 
 // Whether the player's steps can move Link: not while the game decides where he is, such as when he's climbing,
 // hanging, riding, crawling, holding a block, talking or in a cutscene.
+// Whether the hook has left the hookshot. Link stands his ground until it's back, as he does aiming it in the game's
+// first person, so he can't walk off a ledge or up a step with it out.
+bool HookOut(Player* player) {
+    return Player_HoldsHookshot(player) && player->heldActor == nullptr;
+}
+
+// Seconds the hook has been out, and how long Link waits for it. A longshot's whole trip takes well under this, so a
+// hook that never comes back can't leave him rooted to the spot.
+float sHookOutFor = 0.0f;
+constexpr float kHookWaitTime = 4.0f;
+
+bool HookRootsLink(Player* player) {
+    return HookOut(player) && sHookOutFor < kHookWaitTime;
+}
+
 bool StepsMoveLink(Player* player) {
     constexpr u32 kHeldInPlace = PLAYER_STATE1_HOOKSHOT_FALLING | PLAYER_STATE1_TALKING | PLAYER_STATE1_GETTING_ITEM |
                                  PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE |
                                  PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_ITEM_CS |
                                  PLAYER_STATE1_IN_CUTSCENE;
-    return !(player->stateFlags1 & kHeldInPlace) &&
+    return !(player->stateFlags1 & kHeldInPlace) && !HookRootsLink(player) &&
            !(player->stateFlags2 & (PLAYER_STATE2_CRAWLING | PLAYER_STATE2_GRABBING_DYNAPOLY)) && player->csAction == 0;
 }
 
@@ -722,38 +737,51 @@ bool IsSpell(u8 item) {
     return item == ITEM_DINS_FIRE || item == ITEM_FARORES_WIND || item == ITEM_NAYRUS_LOVE;
 }
 
-// The Lens of Truth taken from the wheel is held in that hand, and the world is seen through it while it's held up
-// to the face: the game's lens turns on there, spending magic as it does, and off when the hand comes away. It's
-// tried again no sooner than the retry time (seconds), so running out of magic doesn't buzz every frame. Squeezing
-// that hand's grip away from the face puts it away.
+// The Lens of Truth taken from the wheel is held in that hand until it goes back over a shoulder. Its glass is a real
+// window: what the lens shows is only seen through it, in the world, from each eye (see Vr_DrawLensMask). The game's
+// lens is on, spending magic, only while the glass is in front of the eyes and facing them, and comes off a moment
+// after it leaves, so a shaky hand doesn't click it on and off. Out of magic, it's tried again no sooner than the
+// retry time (seconds).
 constexpr float kLensRetryTime = 1.0f;
+constexpr float kLensOffDelay = 0.3f;     // seconds out of view before it goes off
+constexpr float kLensLookReach = 0.9f;    // meters from the eyes
+constexpr float kLensLookAngle = 55.0f;   // degrees off where the head faces
+constexpr float kLensFacingAngle = 70.0f; // degrees between the glass's face and the eyes
 bool sHoldingLens = false;
 Hand sLensHand = HAND_RIGHT;
 float sLensRetry = 0.0f;
-bool sLensGripLatched = false;
+float sLensAwayFor = 0.0f;
 
 // The note the microphone heard last tick, and its onset (see Vr_OverridePads).
 uint16_t sMicButton = 0;
 uint32_t sMicOnset = 0;
 
 // Climbing by hand. On a ladder or a climbable wall, a hand that closes its grip holds on, and pulling it down climbs
-// up, pushing it up climbs down and, on a wall, pulling it sideways climbs the other way: the stick the game climbs
-// by is set from how fast the holding hands move, so reaching up with one hand while the other pulls climbs hand
-// over hand. Hanging from a ledge, pulling up with a hand that holds on climbs onto it, and letting go of every hand
-// that held drops. Where the game offers to climb a low ledge, closing both hands and pulling climbs it. The stick
-// still climbs as before.
-constexpr float kClimbMinSpeed = 0.1f;  // meters a second a hand has to pull to climb
-constexpr float kClimbFullSpeed = 0.6f; // and at which Link climbs as fast as he can
+// up, pushing it up climbs down and, on a wall, pulling it sideways climbs the other way. The game climbs in whole
+// steps, each an animation the stick starts, so a pull is banked as steps and the stick held for as long as those
+// take: stopping and starting, or a hand's speed dipping as it changes over, doesn't stall a step or start one the
+// wrong way. The hand that has held on longest does the climbing, so one reaching up with its grip closed doesn't
+// pull against it, and hands change over by the old one letting go. The stick still climbs whenever no pull is at
+// work. Hanging from a ledge, pulling up with a hand that holds on climbs onto it, and letting go of every hand that
+// held drops. Where the game offers to climb a low ledge, closing both hands and pulling climbs it.
 constexpr float kClimbStickMax = 67.0f; // the stick that gives the game's fastest climb
 constexpr float kLedgePull = 0.12f;     // meters to pull, holding on, to climb onto a ledge
-constexpr float kClimbSmoothing = 0.3f;
+constexpr float kClimbStepPull = 0.25f; // meters of pull that climb one of Link's steps
+constexpr float kClimbStepTime = 0.45f; // seconds the game takes over a step at its fastest
+constexpr float kClimbMaxBank = 1.5f;   // steps a pull can get ahead of Link by
+constexpr float kClimbStart = 0.2f;     // steps pulled before he starts, so a trembling hand doesn't climb
+constexpr float kClimbForget = 2.0f;    // how fast a pull too small to start is forgotten, per second
 struct ClimbHand {
     bool holding = false;
+    float heldFor = 0.0f; // seconds since taking hold
     float last[3] = {};
-    float pulled = 0.0f; // meters pulled down since taking hold
+    float moved[3] = {};  // meters moved this frame
+    float pulled = 0.0f;  // meters pulled down since taking hold
 };
 ClimbHand sClimbHands[HAND_COUNT];
-float sClimbStick[2] = {}; // x and y, in the game's stick units, while a hand holds on
+float sClimbBank[2] = {};    // x and y: steps pulled and not yet climbed
+bool sClimbMoving[2] = {};   // whether each is being climbed off
+float sClimbStick[2] = {};   // x and y, in the game's stick units, while a pull is being climbed
 bool sClimbStickActive = false;
 bool sClimbHeldLedge = false; // a hand held on while hanging, so letting go drops
 
@@ -777,6 +805,8 @@ void UpdateClimb() {
         }
         sClimbStickActive = false;
         sClimbStick[0] = sClimbStick[1] = 0.0f;
+        sClimbBank[0] = sClimbBank[1] = 0.0f;
+        sClimbMoving[0] = sClimbMoving[1] = false;
         sClimbHeldLedge = false;
         return;
     }
@@ -784,8 +814,6 @@ void UpdateClimb() {
     // Link's right on the wall he faces, in the play space.
     Vec3 facing = FacingInPlay(player);
     Vec3 right = { -facing.z, 0.0f, facing.x };
-    float up = 0.0f;
-    float side = 0.0f;
     int holding = 0;
     int pulledFar = 0;
     for (int i = 0; i < HAND_COUNT; i++) {
@@ -797,19 +825,19 @@ void UpdateClimb() {
         }
         if (!hand.holding) {
             hand.holding = true;
+            hand.heldFor = 0.0f;
             hand.pulled = 0.0f;
+            memset(hand.moved, 0, sizeof(hand.moved));
             memcpy(hand.last, state.gripPose.position, sizeof(hand.last));
             runtime.Vibrate(static_cast<Hand>(i), 0.3f, 0.03f);
             continue;
         }
-        float dx = state.gripPose.position[0] - hand.last[0];
-        float dy = state.gripPose.position[1] - hand.last[1];
-        float dz = state.gripPose.position[2] - hand.last[2];
+        for (int axis = 0; axis < 3; axis++) {
+            hand.moved[axis] = state.gripPose.position[axis] - hand.last[axis];
+        }
         memcpy(hand.last, state.gripPose.position, sizeof(hand.last));
-        // The body goes the other way to the hand that holds on.
-        up -= dy / dt;
-        side -= (dx * right.x + dz * right.z) / dt;
-        hand.pulled -= dy;
+        hand.heldFor += dt;
+        hand.pulled -= hand.moved[1];
         holding++;
         if (hand.pulled >= kLedgePull) {
             pulledFar++;
@@ -848,24 +876,32 @@ void UpdateClimb() {
         return;
     }
 
-    if (holding == 0) {
-        sClimbStickActive = false;
-        sClimbStick[0] = sClimbStick[1] = 0.0f;
-        return;
-    }
-    up /= holding;
-    side /= holding;
-    auto stickFor = [](float speed) {
-        if (fabsf(speed) < kClimbMinSpeed) {
-            return 0.0f;
+    // The body goes the other way to the hand that has held on longest.
+    const ClimbHand* anchor = nullptr;
+    for (const ClimbHand& hand : sClimbHands) {
+        if (hand.holding && (anchor == nullptr || hand.heldFor > anchor->heldFor)) {
+            anchor = &hand;
         }
-        return copysignf(std::min(fabsf(speed) / kClimbFullSpeed, 1.0f) * kClimbStickMax, speed);
-    };
-    float target[2] = { stickFor(side), stickFor(up) };
-    for (int i = 0; i < 2; i++) {
-        sClimbStick[i] += (target[i] - sClimbStick[i]) * kClimbSmoothing;
     }
-    sClimbStickActive = true;
+    if (anchor != nullptr) {
+        float across = anchor->moved[0] * right.x + anchor->moved[2] * right.z;
+        sClimbBank[0] = std::clamp(sClimbBank[0] - across / kClimbStepPull, -kClimbMaxBank, kClimbMaxBank);
+        sClimbBank[1] = std::clamp(sClimbBank[1] - anchor->moved[1] / kClimbStepPull, -kClimbMaxBank, kClimbMaxBank);
+    }
+    sClimbStickActive = false;
+    for (int i = 0; i < 2; i++) {
+        sClimbMoving[i] = sClimbMoving[i] || fabsf(sClimbBank[i]) >= kClimbStart;
+        if (sClimbMoving[i]) {
+            sClimbStick[i] = copysignf(kClimbStickMax, sClimbBank[i]);
+            sClimbStickActive = true;
+            float step = dt / kClimbStepTime;
+            sClimbBank[i] = fabsf(sClimbBank[i]) <= step ? 0.0f : sClimbBank[i] - copysignf(step, sClimbBank[i]);
+            sClimbMoving[i] = sClimbBank[i] != 0.0f;
+        } else {
+            sClimbStick[i] = 0.0f;
+            sClimbBank[i] -= sClimbBank[i] * std::min(kClimbForget * dt, 1.0f);
+        }
+    }
 }
 
 bool sMenuInputsHeld = false;
@@ -1070,9 +1106,11 @@ void RepairHookshot() {
     uint32_t rate = Runtime::Get().GetRefreshRate();
     if (!Player_HoldsHookshot(player) || player->heldActor != nullptr || rate == 0) {
         sHookMissingFor = 0.0f;
+        sHookOutFor = 0.0f;
         return;
     }
     sHookMissingFor += 1.0f / rate;
+    sHookOutFor += 1.0f / rate;
     if (sHookMissingFor < kHookMissingTime) {
         return;
     }
@@ -1184,7 +1222,11 @@ void UpdateQuiver() {
         return;
     }
     if (pressed && !sArrowInHand && !Items_MenuOpen() && HandOverShoulder(stringHand.gripPose)) {
-        if (AMMO(ITEM_BOW) > 0) {
+        // The archery games lend their own arrows, however few are in the quiver.
+        bool arrows = gSaveContext.minigameState == 1            ? gPlayState->interfaceCtx.hbaAmmo > 0
+                      : gPlayState->shootingGalleryStatus != 0 ? gPlayState->shootingGalleryStatus > 0
+                                                                : AMMO(ITEM_BOW) > 0;
+        if (arrows) {
             sArrowInHand = true;
             Player_PlaySfx(&player->actor, NA_SE_PL_CHANGE_ARMS);
             Runtime::Get().Vibrate(ControllerFor(LINK_LEFT), 0.4f, 0.05f);
@@ -1783,7 +1825,10 @@ bool sLiftGripLatched[HAND_COUNT] = {};
 bool HeavyToLift(Actor* actor) {
     return (actor->id == ACTOR_EN_ISHI && (actor->params & 1) == ROCK_LARGE) || actor->id == ACTOR_BG_HEAVY_BLOCK;
 }
-constexpr float kHeavyLiftReach = 45.0f; // game units from its middle; they're much bigger than a pot
+// Game units from its middle, this far above its origin. Link can't stand any closer to one than its own collision
+// keeps him, which is more than a pot's reach, so this has to get past that to its surface.
+constexpr float kHeavyLiftReach = 80.0f;
+constexpr float kHeavyLiftHeight = 35.0f;
 
 
 void UpdateLiftGrab() {
@@ -1801,7 +1846,7 @@ void UpdateLiftGrab() {
         if (state.gripHeld && state.gripPose.valid) {
             Vec3 world = ToWorld(state.gripPose.position, sBuild.anchor, sBuild.unitsPerMeter);
             float dx = world.x - liftable->world.pos.x;
-            float dy = world.y - (liftable->world.pos.y + kLiftCenterHeight);
+            float dy = world.y - (liftable->world.pos.y + (heavy ? kHeavyLiftHeight : kLiftCenterHeight));
             float dz = world.z - liftable->world.pos.z;
             onIt[hand] = dx * dx + dy * dy + dz * dz < reach * reach;
         }
@@ -1820,6 +1865,10 @@ void UpdateLiftGrab() {
             runtime.Vibrate(static_cast<Hand>(hand), 0.5f, 0.06f);
             SPDLOG_INFO("[VR] Lifted actor {} by hand", liftable->id);
             return;
+        }
+        // One hand on something heavy: a light buzz, to say it takes the other one too.
+        if (heavy && onIt[hand]) {
+            runtime.Vibrate(static_cast<Hand>(hand), 0.2f, 0.04f);
         }
     }
 }
@@ -2768,6 +2817,38 @@ Vec3 HandItemPoint(const MtxF& m, Vec3 point) {
              m.mf[3][2] + p.x * m.mf[0][2] + p.y * m.mf[1][2] + p.z * m.mf[2][2] };
 }
 
+// The Lens of Truth, held by its handle, which runs down its -Y to 38 units below the glass's middle; its glass faces
+// out over the knuckles (the model's +Z, which in the item plane's terms is halfway between L and N), with the glass
+// above the thumb. The glass is a disc in the model's XY plane, measured from its vertices: 15 units across from a
+// point 7 up. It's kept a little inside that, where the frame hides its edge.
+const HandItem kLens = { GID_LENS, { 0.0f, -28.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.7071068f, 0.0f, 0.7071068f },
+                         200.0f };
+constexpr Vec3 kLensGlassMiddle = { 0.0f, 7.0f, 0.0f };
+constexpr float kLensGlassRadius = 14.5f;
+constexpr Color_RGBA8 kLensTint = { 170, 150, 255, 24 };
+
+LinkHand LensHand() {
+    return (ControllerFor(LINK_LEFT) == sLensHand) ? LINK_LEFT : LINK_RIGHT;
+}
+
+struct LensGlass {
+    Vec3 center;  // game units, in the world
+    Vec3 normal;
+    float radius;
+};
+
+bool GetLensGlass(Player* player, LensGlass& glass) {
+    MtxF m;
+    if (!sHoldingLens || !HandItemMatrix(player, LensHand(), &kLens, m)) {
+        return false;
+    }
+    Vec3 x = { m.mf[0][0], m.mf[0][1], m.mf[0][2] };
+    glass.center = HandItemPoint(m, kLensGlassMiddle);
+    glass.normal = Normalized({ m.mf[2][0], m.mf[2][1], m.mf[2][2] });
+    glass.radius = kLensGlassRadius * sqrtf(Dot(x, x));
+    return true;
+}
+
 // A hookshot's model without its hook: the same display list with every triangle that reaches past the hook's start
 // taken out, built the first time it's needed. While the hook flies, the game draws it at the end of its chain, so the
 // one on the model would be a second hook left behind (see DrawHandItem).
@@ -2903,32 +2984,49 @@ void UpdateSpell() {
     }
 }
 
+// Whether the Lens of Truth's glass is where the eyes look through it.
+bool LookingThroughLens(const LensGlass& glass) {
+    const Pose& head = Runtime::Get().GetHead();
+    if (!head.valid) {
+        return false;
+    }
+    Vec3 eyes = ToWorld(head.position, sBuild.anchor, sBuild.unitsPerMeter);
+    Vec3 toGlass = { glass.center.x - eyes.x, glass.center.y - eyes.y, glass.center.z - eyes.z };
+    float distance = sqrtf(Dot(toGlass, toGlass));
+    if (distance < 0.001f) {
+        return true;
+    }
+    if (distance > kLensLookReach * sBuild.unitsPerMeter) {
+        return false;
+    }
+    Vec3 along = { toGlass.x / distance, toGlass.y / distance, toGlass.z / distance };
+    return Dot(along, RotateYaw(sYaw, HeadForward())) > cosf(DEG_TO_RAD(kLensLookAngle)) &&
+           fabsf(Dot(along, glass.normal)) > cosf(DEG_TO_RAD(kLensFacingAngle));
+}
+
 void UpdateLens() {
     if (!sHoldingLens) {
         return;
     }
     Runtime& runtime = Runtime::Get();
-    uint32_t refresh = runtime.GetRefreshRate();
-    sLensRetry = std::max(sLensRetry - (refresh > 0 ? 1.0f / refresh : 0.0f), 0.0f);
-    const ControllerState& state = runtime.GetController(sLensHand);
-    bool gripPressed = state.gripHeld && !sLensGripLatched;
-    sLensGripLatched = state.gripHeld;
-    bool atFace = HandAtFace(state.gripPose);
+    sLensRetry = std::max(sLensRetry - FrameStep(), 0.0f);
+    LensGlass glass;
+    bool looking = GetLensGlass(GET_PLAYER(gPlayState), glass) && LookingThroughLens(glass);
+    sLensAwayFor = looking ? 0.0f : sLensAwayFor + FrameStep();
     bool on = gPlayState->actorCtx.lensActive;
-    if (gripPressed && !atFace && !Items_MenuOpen()) {
-        sHoldingLens = false;
-        if (on) {
-            RequestItem(ITEM_LENS);
+    if (on && sLensAwayFor > kLensOffDelay) {
+        // The game's magic takes it from here, with the sound of it going off.
+        Actor_DisableLens(gPlayState);
+    } else if (!on && looking && sLensRetry == 0.0f) {
+        if (gSaveContext.magicState == MAGIC_STATE_IDLE && gSaveContext.magic > 0 &&
+            Magic_RequestChange(gPlayState, 0, MAGIC_CONSUME_LENS)) {
+            gPlayState->actorCtx.lensActive = true;
+            Sfx_PlaySfxCentered(NA_SE_SY_GLASSMODE_ON);
+            runtime.Vibrate(sLensHand, 0.3f, 0.03f);
+        } else {
+            runtime.Vibrate(sLensHand, 0.15f, 0.03f);
         }
-        runtime.Vibrate(sLensHand, 0.4f, 0.05f);
-        SPDLOG_INFO("[VR] Put the Lens of Truth away");
-        return;
-    }
-    if (atFace != on && sLensRetry == 0.0f && (on || gSaveContext.magic > 0)) {
-        // Using the lens again turns it on or off.
-        RequestItem(ITEM_LENS);
         sLensRetry = kLensRetryTime;
-        runtime.Vibrate(sLensHand, 0.3f, 0.03f);
     }
 }
 
@@ -2978,26 +3076,23 @@ void DrawReadySpell(PlayState* play) {
                  radius, radius * 0.3f, color);
 }
 
-// The Lens of Truth in the hand that took it.
+// The Lens of Truth in the hand that took it: its frame, with a thin tint in place of the model's cloudy glass.
 void DrawHeldLens(PlayState* play) {
-    // Up at the eyes, the view is through it, and its frame would only be in the way.
-    if (!sHoldingLens || HandAtFace(Runtime::Get().GetController(sLensHand).gripPose)) {
-        return;
-    }
-    // Held by its handle, which runs down its -Y to 38 units below the glass's middle; its glass faces out over the
-    // knuckles (the model's +Z, which in the item plane's terms is halfway between L and N), with the glass above
-    // the thumb.
-    HandItem lens = { GID_LENS, { 0.0f, -28.0f, 0.0f }, { 0.0f, 1.0f, 0.0f }, { 0.7071068f, 0.0f, 0.7071068f },
-                      240.0f };
-    LinkHand hand = (ControllerFor(LINK_LEFT) == sLensHand) ? LINK_LEFT : LINK_RIGHT;
+    LinkHand hand = LensHand();
     MtxF m;
-    if (!HandItemMatrix(GET_PLAYER(play), hand, &lens, m)) {
+    if (!sHoldingLens || !HandItemMatrix(GET_PLAYER(play), hand, &kLens, m)) {
         return;
     }
     Matrix_Push();
     Vr_PutWorldMatrix(&m);
-    GetItem_Draw(play, lens.model);
+    GetItem_DrawLensFrame(play);
     Matrix_Pop();
+    LensGlass glass;
+    if (GetLensGlass(GET_PLAYER(play), glass)) {
+        Vec3f center = { glass.center.x, glass.center.y, glass.center.z };
+        Vec3f normal = { glass.normal.x, glass.normal.y, glass.normal.z };
+        Aim_DrawLensGlass(play, center, normal, glass.radius, kLensTint);
+    }
 }
 
 void DrawHeldMask(PlayState* play) {
@@ -3604,6 +3699,31 @@ Pose Game_PanelInFront(float distance, float drop) {
     return PanelInFront(distance, drop);
 }
 
+// A fall with no floor anywhere under Link never ends. Past this long (seconds) he's put back where he last stood, as
+// a pit does.
+constexpr float kBottomlessFallTime = 2.5f;
+float sBottomlessFor = 0.0f;
+
+void UpdateFallWatch() {
+    Player* player = GET_PLAYER(gPlayState);
+    constexpr u32 kNotFalling = PLAYER_STATE1_IN_WATER | PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_CUTSCENE |
+                                PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_HANGING_OFF_LEDGE;
+    bool bottomless = !(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && player->actor.floorPoly == nullptr &&
+                      !(player->stateFlags1 & kNotFalling) &&
+                      !(player->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT);
+    sBottomlessFor = bottomless ? sBottomlessFor + FrameStep() : 0.0f;
+    if (sBottomlessFor > kBottomlessFallTime && gPlayState->transitionTrigger == TRANS_TRIGGER_OFF) {
+        SPDLOG_WARN("[VR] Falling with no floor at ({:.0f}, {:.0f}, {:.0f}): item action {}, state1 {:08X} state3 {:02X}, "
+                    "Link's parent {}; putting him back",
+                    player->actor.world.pos.x, player->actor.world.pos.y, player->actor.world.pos.z,
+                    player->heldItemAction, player->stateFlags1, player->stateFlags3,
+                    static_cast<void*>(player->actor.parent));
+        sBottomlessFor = 0.0f;
+        Play_TriggerVoidOut(gPlayState);
+        Sfx_PlaySfxCentered(NA_SE_OC_ABYSS);
+    }
+}
+
 // Lets go of what's held in a hand outside the game's own items: a mask on its way to the face, the Lens of Truth
 // (turned off if it's on), a readied spell, and an arrow from the quiver.
 void DropHandHeld() {
@@ -3635,7 +3755,9 @@ void Game_OnFrame() {
     }
     sWasStereo = stereo;
 
-    if (sItemRequest != VR_REQUEST_NONE && runtime.GetRefreshRate() > 0) {
+    // The game takes no item with the hook out, so a request made then, such as the sword, waits for it to come back.
+    bool hookHolding = gPlayState != nullptr && GET_PLAYER(gPlayState) != nullptr && HookOut(GET_PLAYER(gPlayState));
+    if (sItemRequest != VR_REQUEST_NONE && runtime.GetRefreshRate() > 0 && !hookHolding) {
         sItemRequestAge += 1.0f / runtime.GetRefreshRate();
         if (sItemRequestAge > kItemRequestLifetime) {
             sItemRequest = VR_REQUEST_NONE;
@@ -3662,6 +3784,7 @@ void Game_OnFrame() {
     // but their hands don't act on the game: no sword, grabs, items or masks, and no item menu or settings panel.
     // In third person the controllers are a gamepad.
     if (InGameplay(gPlayState) && !sRender.fromCamera) {
+        UpdateFallWatch();
         UpdateDraw();
         RepairHookshot();
         CheckHookshotPull();
@@ -3714,19 +3837,38 @@ void Game_OnFrame() {
                 (spinner->stateFlags1 & PLAYER_STATE1_CHARGING_SPIN_ATTACK)) {
                 continue;
             }
-            // With a bow or slingshot out, the string hand comes back past its shoulder as it draws, so it never
-            // draws the sword or shield; with the quiver, it takes an arrow there instead (see UpdateQuiver). The
-            // bow hand still can, but not while the string is drawn or just after a shot, when it's aiming.
-            if (CurrentTool() == HeldTool::Bow &&
-                (hand == ControllerFor(LINK_LEFT) || sDrawing || sSinceShot < kShotSettleTime)) {
+            // While a shot is drawn, or just after, the hands are aiming, and the string hand comes back past its
+            // shoulder. With the quiver, that hand takes an arrow there instead (see UpdateQuiver).
+            Player* gesturer = GET_PLAYER(gPlayState);
+            HeldTool tool = CurrentTool();
+            if (tool == HeldTool::Bow &&
+                (sDrawing || sSinceShot < kShotSettleTime || (hand == ControllerFor(LINK_LEFT) && UsesQuiver(gesturer)))) {
                 continue;
             }
-            Player* gesturer = GET_PLAYER(gPlayState);
+            // The lens goes back the way a tool does.
+            if (sHoldingLens && hand == sLensHand) {
+                DropHandHeld();
+                sSwordGestureCooldown = kSwordGestureCooldown;
+                runtime.Vibrate(static_cast<Hand>(hand), 0.4f, 0.05f);
+                SPDLOG_INFO("[VR] Put the Lens of Truth away");
+                continue;
+            }
             bool swordOnRight = CVarGetInteger(CVAR_VR_SWORD_IN_RIGHT_HAND, 0) != 0;
-            if (OverRightShoulder(state.gripPose) != swordOnRight && HasShield()) {
-                // The shield only comes out where Link's right hand is free for it: not while it holds a bow,
-                // hookshot or something carried, nor with a weapon held in both hands, nor in the water.
-                bool handFree = CurrentTool() == HeldTool::None && !Player_HoldsTwoHandedWeapon(gesturer) &&
+            bool shieldShoulder = OverRightShoulder(state.gripPose) != swordOnRight && HasShield();
+            // A bow, slingshot, hookshot or boomerang goes back over the shield's shoulder. Over the sword's, the
+            // sword takes its place.
+            if (shieldShoulder && tool != HeldTool::None) {
+                RequestItem(VR_REQUEST_PUT_AWAY);
+                sSwordGestureCooldown = kSwordGestureCooldown;
+                runtime.Vibrate(static_cast<Hand>(hand), 0.4f, 0.05f);
+                SPDLOG_INFO("[VR] Put item {} away with the {} hand", gesturer->heldItemId,
+                            hand == HAND_LEFT ? "left" : "right");
+                continue;
+            }
+            if (shieldShoulder) {
+                // The shield only comes out where Link's right hand is free for it: not while it holds something
+                // carried, nor with a weapon held in both hands, nor in the water.
+                bool handFree = !Player_HoldsTwoHandedWeapon(gesturer) &&
                                 !(gesturer->stateFlags1 & (PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_WATER));
                 if (!handFree && !sShieldOut) {
                     runtime.Vibrate(static_cast<Hand>(hand), 0.15f, 0.03f);
@@ -4014,8 +4156,7 @@ void Game_TakeItem(uint8_t item, Hand hand, int8_t slot) {
         sHoldingLens = true;
         sLensHand = hand;
         sLensRetry = 0.0f;
-        // The grip that chose it, if it did, has to be let go before it can put the lens away.
-        sLensGripLatched = true;
+        sLensAwayFor = 0.0f;
         Runtime::Get().Vibrate(hand, 0.3f, 0.04f);
         return;
     }
@@ -4060,6 +4201,17 @@ void Controls_StartBinding(VrAction action) {
     sBindingAction = action;
     sBindingFor = 0.0f;
     SPDLOG_INFO("[VR] Press the button for action {} on the controllers", static_cast<int>(action));
+}
+
+std::string Game_Where() {
+    if (gPlayState == nullptr) {
+        return "not playing";
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    return fmt::format("scene {} room {} at ({:.0f}, {:.0f}, {:.0f}), hands {} and {} matrices",
+                       static_cast<int>(gPlayState->sceneNum), static_cast<int>(gPlayState->roomCtx.curRoom.num),
+                       player->actor.world.pos.x, player->actor.world.pos.y, player->actor.world.pos.z,
+                       sRender.handMtx[0].size(), sRender.handMtx[1].size());
 }
 
 bool Game_StreamerView() {
@@ -4270,6 +4422,11 @@ extern "C" void Vr_OverridePads(OSContPad* pads) {
         pads[0].stick_x = static_cast<int8_t>(lroundf(SohVr::sClimbStick[0]));
         pads[0].stick_y = static_cast<int8_t>(lroundf(SohVr::sClimbStick[1]));
     }
+    // Link stands his ground while the hook is out.
+    if (Vr_IsWorldStereo() && gPlayState != nullptr && SohVr::HookRootsLink(GET_PLAYER(gPlayState))) {
+        pads[0].stick_x = 0;
+        pads[0].stick_y = 0;
+    }
     // Buttons pressed and released between two game ticks still count.
     pads[0].button |= SohVr::sLatchedButtons | SohVr::CurrentButtons();
     SohVr::sLatchedButtons = 0;
@@ -4399,8 +4556,7 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
         SohVr::RecordHand((SohVr::ControllerFor(SohVr::LINK_LEFT) == SohVr::sMaskHand) ? SohVr::LINK_LEFT
                                                                                          : SohVr::LINK_RIGHT);
         SohVr::DrawHeldMask(play);
-        SohVr::RecordHand((SohVr::ControllerFor(SohVr::LINK_LEFT) == SohVr::sLensHand) ? SohVr::LINK_LEFT
-                                                                                         : SohVr::LINK_RIGHT);
+        SohVr::RecordHand(SohVr::LensHand());
         SohVr::DrawHeldLens(play);
         SohVr::sRecordingHand = -1;
         SohVr::DrawReadySpell(play);
@@ -4409,6 +4565,22 @@ extern "C" void Vr_DrawPlayerExtras(PlayState* play) {
         SohVr::Aim_DrawShotMarker(play, player);
     }
     SohVr::Items_Draw(play);
+}
+
+extern "C" bool Vr_DrawLensMask(PlayState* play, bool showInside) {
+    SohVr::LensGlass glass;
+    if (!SohVr::GetLensGlass(GET_PLAYER(play), glass)) {
+        return false;
+    }
+    const SohVr::Pose& head = SohVr::Runtime::Get().GetHead();
+    SohVr::Vec3 eyes = SohVr::ToWorld(head.position, SohVr::sBuild.anchor, SohVr::sBuild.unitsPerMeter);
+    // It moves with the hand between ticks, as the frame does.
+    SohVr::RecordHand(SohVr::LensHand());
+    SohVr::Aim_DrawLensMask(play, { glass.center.x, glass.center.y, glass.center.z },
+                            { glass.normal.x, glass.normal.y, glass.normal.z }, glass.radius,
+                            { eyes.x, eyes.y, eyes.z }, showInside);
+    SohVr::sRecordingHand = -1;
+    return true;
 }
 
 extern "C" s32 Vr_ItemRequestButton(void) {
@@ -4808,7 +4980,7 @@ extern "C" f32 Vr_MovementMultiplier(void) {
 }
 
 extern "C" bool Vr_MayMountClimb(void) {
-    if (!Vr_IsWorldStereo() || !CVarGetInteger(CVAR_VR_CLIMB_BY_HAND, 1) || !CVarGetInteger(CVAR_VR_GRAB_TO_CLIMB, 1)) {
+    if (!Vr_IsWorldStereo() || !CVarGetInteger(CVAR_VR_CLIMB_BY_HAND, 1) || !CVarGetInteger(CVAR_VR_GRAB_TO_CLIMB, 0)) {
         return true;
     }
     const SohVr::Runtime& runtime = SohVr::Runtime::Get();
