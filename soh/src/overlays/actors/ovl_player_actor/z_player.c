@@ -3191,15 +3191,14 @@ s32 func_808351D4(Player* this, PlayState* play) {
                 if (!func_808350A4(play, this)) {
                     Player_PlaySfx(this, D_808543DC[ABS(this->unk_860) - 1]);
                 }
-            } else if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) || Vr_IsWorldStereo()) {
-                // In VR a pull in the air fires too, instead of doing nothing.
+            } else if (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) {
                 func_808350A4(play, this);
             }
         }
         this->unk_834 = 10;
         // In VR shooting doesn't stop Link, so shots on the move don't jerk the view to a halt. The hookshot still
-        // does: Link has to stand his ground while its hook is out (see Vr_OverridePads).
-        if (!Vr_IsWorldStereo() || Player_HoldsHookshot(this)) {
+        // does when it fires, from the ground: Link has to stand his ground while its hook is out (see Vr_OverridePads).
+        if (!Vr_IsWorldStereo() || (Player_HoldsHookshot(this) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
             Player_ZeroSpeedXZ(this);
         }
     } else {

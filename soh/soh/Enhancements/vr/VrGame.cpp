@@ -3699,31 +3699,6 @@ Pose Game_PanelInFront(float distance, float drop) {
     return PanelInFront(distance, drop);
 }
 
-// A fall with no floor anywhere under Link never ends. Past this long (seconds) he's put back where he last stood, as
-// a pit does.
-constexpr float kBottomlessFallTime = 2.5f;
-float sBottomlessFor = 0.0f;
-
-void UpdateFallWatch() {
-    Player* player = GET_PLAYER(gPlayState);
-    constexpr u32 kNotFalling = PLAYER_STATE1_IN_WATER | PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_IN_CUTSCENE |
-                                PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_HANGING_OFF_LEDGE;
-    bool bottomless = !(player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && player->actor.floorPoly == nullptr &&
-                      !(player->stateFlags1 & kNotFalling) &&
-                      !(player->stateFlags3 & PLAYER_STATE3_FLYING_WITH_HOOKSHOT);
-    sBottomlessFor = bottomless ? sBottomlessFor + FrameStep() : 0.0f;
-    if (sBottomlessFor > kBottomlessFallTime && gPlayState->transitionTrigger == TRANS_TRIGGER_OFF) {
-        SPDLOG_WARN("[VR] Falling with no floor at ({:.0f}, {:.0f}, {:.0f}): item action {}, state1 {:08X} state3 {:02X}, "
-                    "Link's parent {}; putting him back",
-                    player->actor.world.pos.x, player->actor.world.pos.y, player->actor.world.pos.z,
-                    player->heldItemAction, player->stateFlags1, player->stateFlags3,
-                    static_cast<void*>(player->actor.parent));
-        sBottomlessFor = 0.0f;
-        Play_TriggerVoidOut(gPlayState);
-        Sfx_PlaySfxCentered(NA_SE_OC_ABYSS);
-    }
-}
-
 // Lets go of what's held in a hand outside the game's own items: a mask on its way to the face, the Lens of Truth
 // (turned off if it's on), a readied spell, and an arrow from the quiver.
 void DropHandHeld() {
@@ -3784,7 +3759,6 @@ void Game_OnFrame() {
     // but their hands don't act on the game: no sword, grabs, items or masks, and no item menu or settings panel.
     // In third person the controllers are a gamepad.
     if (InGameplay(gPlayState) && !sRender.fromCamera) {
-        UpdateFallWatch();
         UpdateDraw();
         RepairHookshot();
         CheckHookshotPull();
